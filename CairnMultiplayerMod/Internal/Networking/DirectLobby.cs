@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Net;
@@ -19,6 +20,13 @@ namespace CairnMultiplayerMod.Internal.Networking
         public Func<int> Port { get; init; } = () => DirectLobby.DefaultPort;
         public Func<string> Password { get; init; } = () => "";
         public Func<string> PlayerName { get; init; } = () => "Player";
+
+        /// <summary>How long a connection lost without a goodbye is retried (guest) or its
+        /// seat kept (host). Zero turns reconnection off.</summary>
+        public Func<int> ReconnectSeconds { get; init; } = () => DirectLobby.DefaultReconnectSeconds;
+
+        /// <summary>Silence after which a connection counts as lost.</summary>
+        public int DisconnectTimeoutMs { get; init; } = 15000;
     }
 
     /// <summary>
@@ -31,12 +39,18 @@ namespace CairnMultiplayerMod.Internal.Networking
     /// channel 1 carries this lobby's own control messages (roster, start signal), which
     /// stand in for Steam lobby data.
     ///
+    /// A connection that drops without a goodbye (time-out, network loss, a crash) is not
+    /// the end of the session: the guest keeps dialling the host and the host keeps the
+    /// guest's seat, both for <see cref="DirectLobbySettings.ReconnectSeconds"/>. A guest
+    /// comes back under the same peer id, so it gets its own seat and player id back.
+    ///
     /// LiteNetLib queues its socket events until <see cref="Pump"/> calls PollEvents, so
     /// every callback here runs on the Unity thread, like Steam's.
     /// </summary>
     internal sealed class DirectLobby : ILobby
     {
         public const int DefaultPort = 27420;
+        public const int DefaultReconnectSeconds = 300;
         /// <summary>High byte of every direct peer id, so one can never equal a SteamID64
         /// (those start 0x01).</summary>
         public const byte PeerIdPrefix = 0xD1;
@@ -46,6 +60,8 @@ namespace CairnMultiplayerMod.Internal.Networking
         private const byte ControlChannel = 1;
         private const int MaxNameLength = 64;
         private const float JoinTimeoutSeconds = 20f;
+        private const double RedialDelaySeconds = 2.0;
+        private const string ReconnectingSuffix = " (reconnecting…)";
 
         private enum Control : byte
         {
@@ -58,12 +74,24 @@ namespace CairnMultiplayerMod.Internal.Networking
         private readonly EventBasedNetListener _listener = new();
         private readonly NetManager _net;
         private readonly List<LobbyMember> _members = new();
-        private readonly Dictionary<ulong, NetPeer> _peersById = new();
-        private readonly Dictionary<NetPeer, ulong> _idsByPeer = new();
-        private readonly Dictionary<NetPeer, string> _namesByPeer = new();
         private readonly Queue<(ulong from, byte[] payload)> _inbox = new();
 
+        // Host: guests in join order. A seat outlives its connection while the guest has
+        // a reconnection deadline.
+        private readonly List<ulong> _seats = new();
+        private readonly Dictionary<ulong, string> _seatNames = new();
+        private readonly Dictionary<ulong, double> _seatDeadlines = new();
+        private readonly Dictionary<ulong, NetPeer> _peersById = new();
+        private readonly Dictionary<NetPeer, ulong> _idsByPeer = new();
+
+        // Guest: where the host is, to dial it again.
         private NetPeer _hostPeer;
+        private string _hostAddress = "";
+        private int _hostPort;
+        private bool _reconnecting;
+        private double _reconnectDeadline;
+        private double _nextRedialAt;
+
         private TaskCompletionSource<bool> _joinTcs;
         private float _joinElapsed;
         private string _lastStartNonce = "";
@@ -79,7 +107,7 @@ namespace CairnMultiplayerMod.Internal.Networking
             _net = new NetManager(_listener)
             {
                 ChannelsCount = 2,
-                DisconnectTimeout = 15000,
+                DisconnectTimeout = _settings.DisconnectTimeoutMs,
                 AutoRecycle = true,
                 UnconnectedMessagesEnabled = false,
             };
@@ -108,16 +136,37 @@ namespace CairnMultiplayerMod.Internal.Networking
         public MultiplayerModeRules CurrentModeRules
             => IsInLobby ? MultiplayerModes.RulesFor(_mode) : MultiplayerModes.RopeTeam;
 
+        /// <summary>True while a guest is dialling a host it lost.</summary>
+        public bool IsReconnecting => _reconnecting;
+
         public event Action OnLobbyEntered;
         public event Action<string> OnLobbyError;
         public event Action OnLobbyLeft;
         public event Action OnMembersChanged;
         public event Action<ServerStartGame> OnStartRequested;
+        public event Action<string> OnConnectionNotice;
+        public event Action<ulong> OnPeerReconnected;
+
+        private double ReconnectWindow => Math.Max(0, _settings.ReconnectSeconds?.Invoke() ?? DefaultReconnectSeconds);
+
+        private static double Now() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
 
         public void Pump(float dt)
         {
             if (_disposed || !_net.IsRunning) return;
             _net.PollEvents();
+
+            if (IsHost)
+            {
+                ExpireSeats();
+                return;
+            }
+
+            if (_reconnecting)
+            {
+                PumpReconnect();
+                return;
+            }
 
             if (_joinTcs == null) return;
             _joinElapsed += Math.Max(0f, dt);
@@ -180,6 +229,23 @@ namespace CairnMultiplayerMod.Internal.Networking
             }
 
             LocalPeerId = NewPeerId();
+            _hostAddress = host;
+            _hostPort = port;
+            _joinTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _joinElapsed = 0f;
+            var task = _joinTcs.Task;
+            if (!Dial(out var error))
+                FailJoin(error);
+            else
+                ModLog.Info($"[Direct] Connecting to {host}:{port}...");
+            return task;
+        }
+
+        /// <summary>Sends the hello. A redial reuses <see cref="LocalPeerId"/>, which is how
+        /// the host recognises a returning guest.</summary>
+        private bool Dial(out string error)
+        {
+            error = "";
             var hello = new NetDataWriter();
             hello.Put(AppKey);
             hello.Put(Protocol.Version);
@@ -187,23 +253,18 @@ namespace CairnMultiplayerMod.Internal.Networking
             hello.Put(LocalPeerId);
             hello.Put(LocalPersonaName);
             hello.Put(_settings.Password?.Invoke() ?? "");
-
-            _joinTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _joinElapsed = 0f;
-            var task = _joinTcs.Task;
             try
             {
-                _hostPeer = _net.Connect(host, port, hello);
-                if (_hostPeer == null)
-                    FailJoin($"Could not reach {host}:{port}.");
-                else
-                    ModLog.Info($"[Direct] Connecting to {host}:{port}...");
+                _hostPeer = _net.Connect(_hostAddress, _hostPort, hello);
+                if (_hostPeer != null) return true;
+                error = $"Could not reach {_hostAddress}:{_hostPort}.";
             }
             catch (Exception ex)
             {
-                FailJoin($"Could not reach {host}:{port}: {ex.Message}");
+                _hostPeer = null;
+                error = $"Could not reach {_hostAddress}:{_hostPort}: {ex.Message}";
             }
-            return task;
+            return false;
         }
 
         public Task<bool> JoinById(ulong lobbyId64)
@@ -226,6 +287,8 @@ namespace CairnMultiplayerMod.Internal.Networking
                 bye.Put("The host closed the lobby.");
                 _net.DisconnectAll(bye.Data, 0, bye.Length);
             }
+            // Stopping sends every peer a disconnect: that is the goodbye that tells the
+            // other side not to wait for us.
             if (_net.IsRunning) _net.Stop();
 
             ResetState();
@@ -252,8 +315,9 @@ namespace CairnMultiplayerMod.Internal.Networking
             var w = new NetDataWriter();
             w.Put((byte)Control.Start);
             WriteStart(w, _hostStartNonce, start);
-            foreach (var peer in _idsByPeer.Keys)
-                peer.Send(w, ControlChannel, DeliveryMethod.ReliableOrdered);
+            foreach (var peer in _peersById.Values)
+                if (peer.ConnectionState == ConnectionState.Connected)
+                    peer.Send(w, ControlChannel, DeliveryMethod.ReliableOrdered);
             ModLog.Info($"[Direct] Start broadcast nonce={_hostStartNonce} mode={(MultiplayerMode)start.Mode}.");
             RaiseStart(_hostStartNonce, start);
             return true;
@@ -274,11 +338,11 @@ namespace CairnMultiplayerMod.Internal.Networking
 
         public void AcceptPeer(ulong peerId) { }
 
-        /// <summary>A host drops a departed guest itself; a guest has no session to close
-        /// but the host's.</summary>
+        /// <summary>Called once a member is gone for good: the host frees the seat.</summary>
         public void ClosePeer(ulong peerId)
         {
-            if (IsHost && _peersById.TryGetValue(peerId, out var peer))
+            if (!IsHost) return;
+            if (_peersById.TryGetValue(peerId, out var peer))
                 peer.Disconnect();
         }
 
@@ -374,21 +438,39 @@ namespace CairnMultiplayerMod.Internal.Networking
                 Reject(request, "Wrong lobby password.");
                 return;
             }
-            if (_members.Count >= MaxMembers)
-            {
-                Reject(request, "Lobby is full.");
-                return;
-            }
-            if ((peerId >> 56) != PeerIdPrefix || peerId == LocalPeerId || _peersById.ContainsKey(peerId))
+            if ((peerId >> 56) != PeerIdPrefix || peerId == LocalPeerId)
             {
                 Reject(request, "Player id collision. Try joining again.");
                 return;
             }
 
+            var returning = _seats.Contains(peerId);
+            if (!returning)
+            {
+                if (_peersById.ContainsKey(peerId))
+                {
+                    Reject(request, "Player id collision. Try joining again.");
+                    return;
+                }
+                if (1 + _seats.Count >= MaxMembers)
+                {
+                    Reject(request, "Lobby is full.");
+                    return;
+                }
+            }
+            else if (_peersById.TryGetValue(peerId, out var stale))
+            {
+                // The guest noticed the drop before we did: its old connection is still
+                // waiting out its time-out here. Forget it so its end is not read as a leave.
+                _idsByPeer.Remove(stale);
+                _peersById.Remove(peerId);
+                _seatDeadlines.TryAdd(peerId, Now() + ReconnectWindow);
+            }
+
             var peer = request.Accept();
             _idsByPeer[peer] = peerId;
             _peersById[peerId] = peer;
-            _namesByPeer[peer] = Clip(name, $"Player{_members.Count + 1}");
+            _seatNames[peerId] = Clip(name, $"Player{_seats.Count + 1}");
         }
 
         private static void Reject(ConnectionRequest request, string reason)
@@ -406,10 +488,12 @@ namespace CairnMultiplayerMod.Internal.Networking
                 ModLog.Info("[Direct] Connected to host; waiting for the lobby roster.");
                 return;
             }
-            if (!_idsByPeer.ContainsKey(peer)) return;
+            if (!_idsByPeer.TryGetValue(peer, out var id)) return;
 
+            var returned = _seatDeadlines.Remove(id);
+            if (!_seats.Contains(id)) _seats.Add(id);
             RebuildHostMembers();
-            ModLog.Info($"[Direct] {_namesByPeer[peer]} joined from {peer}.");
+            ModLog.Info($"[Direct] {_seatNames[id]} {(returned ? "reconnected" : "joined")} from {peer}.");
 
             var welcome = new NetDataWriter();
             welcome.Put((byte)Control.Welcome);
@@ -425,37 +509,140 @@ namespace CairnMultiplayerMod.Internal.Networking
 
             BroadcastRoster(except: peer);
             OnMembersChanged?.Invoke();
+            if (returned)
+            {
+                OnConnectionNotice?.Invoke($"{_seatNames[id]} reconnected.");
+                OnPeerReconnected?.Invoke(id);
+            }
         }
 
         private void OnPeerDisconnected(NetPeer peer, DisconnectInfo info)
         {
             if (IsHost)
             {
-                if (!_idsByPeer.TryGetValue(peer, out var id)) return;
-                _idsByPeer.Remove(peer);
-                _peersById.Remove(id);
-                _namesByPeer.TryGetValue(peer, out var name);
-                _namesByPeer.Remove(peer);
-                ModLog.Info($"[Direct] {name} left ({info.Reason}).");
-                if (!IsInLobby) return;
-                RebuildHostMembers();
-                BroadcastRoster(except: null);
-                OnMembersChanged?.Invoke();
+                HostLostPeer(peer, info);
                 return;
             }
 
             if (peer != _hostPeer) return;
+            _hostPeer = null;
             var reason = ReadReason(info);
-            if (_joinTcs != null)
+
+            if (_joinTcs != null && !_reconnecting)
             {
                 FailJoin(reason);
                 return;
             }
             if (!IsInLobby) return;
 
-            ModLog.Warning($"[Direct] Lost the host: {reason}");
-            Leave();
-            OnLobbyError?.Invoke(reason);
+            if (!IsTransient(info.Reason) || ReconnectWindow <= 0)
+            {
+                ModLog.Warning($"[Direct] Lost the host: {reason}");
+                Leave();
+                OnLobbyError?.Invoke(reason);
+                return;
+            }
+
+            if (!_reconnecting)
+            {
+                _reconnecting = true;
+                _reconnectDeadline = Now() + ReconnectWindow;
+                ModLog.Warning($"[Direct] Lost the host ({reason}); reconnecting for up to {ReconnectWindow:0} s.");
+                OnConnectionNotice?.Invoke($"Connection to the host lost. Reconnecting for up to {DescribeWindow()}...");
+            }
+            _nextRedialAt = Now() + RedialDelaySeconds;
+        }
+
+        private void HostLostPeer(NetPeer peer, DisconnectInfo info)
+        {
+            // A peer replaced by its own reconnection is no longer mapped: ignore its end.
+            if (!_idsByPeer.TryGetValue(peer, out var id)) return;
+            _idsByPeer.Remove(peer);
+            _peersById.Remove(id);
+            if (!IsInLobby) return;
+
+            _seatNames.TryGetValue(id, out var name);
+            if (!_seats.Contains(id))
+            {
+                _seatNames.Remove(id);
+                return; // accepted but never arrived
+            }
+
+            if (IsTransient(info.Reason) && ReconnectWindow > 0)
+            {
+                _seatDeadlines.TryAdd(id, Now() + ReconnectWindow);
+                ModLog.Warning($"[Direct] {name} dropped ({info.Reason}); keeping the seat for {ReconnectWindow:0} s.");
+                OnConnectionNotice?.Invoke($"{name} lost connection. Waiting up to {DescribeWindow()} for them to reconnect.");
+            }
+            else
+            {
+                RemoveSeat(id);
+                ModLog.Info($"[Direct] {name} left ({info.Reason}).");
+            }
+
+            RebuildHostMembers();
+            BroadcastRoster(except: null);
+            OnMembersChanged?.Invoke();
+        }
+
+        private void ExpireSeats()
+        {
+            if (_seatDeadlines.Count == 0) return;
+            var now = Now();
+            List<ulong> expired = null;
+            foreach (var (id, deadline) in _seatDeadlines)
+                if (now >= deadline) (expired ??= new List<ulong>()).Add(id);
+            if (expired == null) return;
+
+            foreach (var id in expired)
+            {
+                var name = _seatNames.TryGetValue(id, out var n) ? n : "A player";
+                RemoveSeat(id);
+                ModLog.Info($"[Direct] {name} did not reconnect in time; seat released.");
+                OnConnectionNotice?.Invoke($"{name} did not reconnect.");
+            }
+            RebuildHostMembers();
+            BroadcastRoster(except: null);
+            OnMembersChanged?.Invoke();
+        }
+
+        private void RemoveSeat(ulong id)
+        {
+            _seats.Remove(id);
+            _seatNames.Remove(id);
+            _seatDeadlines.Remove(id);
+        }
+
+        private void PumpReconnect()
+        {
+            var now = Now();
+            if (now >= _reconnectDeadline)
+            {
+                ModLog.Warning("[Direct] Gave up reconnecting to the host.");
+                Leave();
+                OnLobbyError?.Invoke($"Could not reconnect to the host within {DescribeWindow()}.");
+                return;
+            }
+            if (_hostPeer != null || now < _nextRedialAt) return;
+
+            _nextRedialAt = now + RedialDelaySeconds;
+            if (!Dial(out var error))
+                ModLog.Debug($"[Direct] Redial failed: {error}");
+        }
+
+        /// <summary>A goodbye or a refusal is final; anything else may be a network blip.</summary>
+        private static bool IsTransient(DisconnectReason reason)
+            => reason is not (DisconnectReason.RemoteConnectionClose
+                or DisconnectReason.DisconnectPeerCalled
+                or DisconnectReason.ConnectionRejected
+                or DisconnectReason.InvalidProtocol);
+
+        private string DescribeWindow()
+        {
+            var seconds = ReconnectWindow;
+            return seconds >= 60 && seconds % 60 == 0
+                ? $"{seconds / 60:0} minute{(seconds == 60 ? "" : "s")}"
+                : $"{seconds:0} seconds";
         }
 
         private void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channel, DeliveryMethod method)
@@ -501,19 +688,51 @@ namespace CairnMultiplayerMod.Internal.Networking
 
         private void HandleWelcome(NetPacketReader reader)
         {
-            CurrentLobbyName = reader.GetString(128);
-            CurrentRoomCode = reader.GetString(128);
-            _mode = MultiplayerModes.Parse(reader.GetByte()).Mode;
-            MaxMembers = reader.GetInt();
-            HostPeerId = reader.GetULong();
+            var lobbyName = reader.GetString(128);
+            var roomCode = reader.GetString(128);
+            var mode = MultiplayerModes.Parse(reader.GetByte()).Mode;
+            var maxMembers = reader.GetInt();
+            var hostPeerId = reader.GetULong();
+
+            var wasReconnecting = _reconnecting;
+            _reconnecting = false;
+            if (wasReconnecting && hostPeerId != HostPeerId)
+            {
+                // The host restarted and is hosting again at the same address: our old
+                // session is gone. Close it, then enter the new one as a fresh join.
+                ModLog.Info("[Direct] The host is back with a new lobby; joining it.");
+                var dial = _hostPeer;
+                var address = (_hostAddress, _hostPort);
+                var peerId = LocalPeerId;
+                ResetState();
+                OnLobbyLeft?.Invoke();
+                (_hostPeer, (_hostAddress, _hostPort), LocalPeerId) = (dial, address, peerId);
+                wasReconnecting = false;
+            }
+
+            CurrentLobbyName = lobbyName;
+            CurrentRoomCode = roomCode;
+            _mode = mode;
+            MaxMembers = maxMembers;
+            HostPeerId = hostPeerId;
             ReadRoster(reader);
             var hasStart = reader.GetBool();
             var pendingStart = hasStart ? ReadStart(reader) : default;
 
             IsHost = false;
             IsInLobby = true;
-            ModLog.Info($"[Direct] Entered '{CurrentLobbyName}' ({_members.Count} members).");
 
+            if (wasReconnecting)
+            {
+                ModLog.Info($"[Direct] Reconnected to '{CurrentLobbyName}'.");
+                OnMembersChanged?.Invoke();
+                OnConnectionNotice?.Invoke("Reconnected to the host.");
+                OnPeerReconnected?.Invoke(HostPeerId);
+                if (hasStart) RaiseStart(pendingStart.nonce, pendingStart.start);
+                return;
+            }
+
+            ModLog.Info($"[Direct] Entered '{CurrentLobbyName}' ({_members.Count} members).");
             var join = _joinTcs;
             _joinTcs = null;
             OnLobbyEntered?.Invoke();
@@ -526,10 +745,11 @@ namespace CairnMultiplayerMod.Internal.Networking
         {
             _members.Clear();
             _members.Add(new LobbyMember { SteamId = LocalPeerId, Name = LocalPersonaName, IsHost = true, IsSelf = true });
-            foreach (var (peer, id) in _idsByPeer)
+            foreach (var id in _seats)
             {
-                if (peer.ConnectionState != ConnectionState.Connected) continue;
-                _members.Add(new LobbyMember { SteamId = id, Name = _namesByPeer[peer] });
+                var name = _seatNames.TryGetValue(id, out var n) ? n : "Player";
+                if (_seatDeadlines.ContainsKey(id)) name += ReconnectingSuffix;
+                _members.Add(new LobbyMember { SteamId = id, Name = name });
             }
         }
 
@@ -567,7 +787,7 @@ namespace CairnMultiplayerMod.Internal.Networking
             var w = new NetDataWriter();
             w.Put((byte)Control.Roster);
             WriteRoster(w);
-            foreach (var peer in _idsByPeer.Keys)
+            foreach (var peer in _peersById.Values)
                 if (peer != except && peer.ConnectionState == ConnectionState.Connected)
                     peer.Send(w, ControlChannel, DeliveryMethod.ReliableOrdered);
         }
@@ -634,13 +854,18 @@ namespace CairnMultiplayerMod.Internal.Networking
             CurrentLobbyName = "";
             _mode = MultiplayerMode.RopeTeam;
             _hostPeer = null;
+            _hostAddress = "";
+            _hostPort = 0;
+            _reconnecting = false;
             _hasHostStart = false;
             _hostStartNonce = "";
             _lastStartNonce = "";
             _members.Clear();
+            _seats.Clear();
+            _seatNames.Clear();
+            _seatDeadlines.Clear();
             _peersById.Clear();
             _idsByPeer.Clear();
-            _namesByPeer.Clear();
             _inbox.Clear();
         }
 

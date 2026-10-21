@@ -150,6 +150,7 @@ public partial class Mod : MelonMod
             Port = () => ModConfig.DirectPort.Value,
             Password = () => ModConfig.DirectPassword.Value ?? "",
             PlayerName = LocalPlayerName,
+            ReconnectSeconds = () => ModConfig.DirectReconnectSeconds.Value,
         }));
         _panel = MultiplayerPanelFactory.Create(Lobby);
         _mainMenu = new MainMenuAdapter(OnStoryModeSelected);
@@ -222,6 +223,13 @@ public partial class Mod : MelonMod
             _panel.SetStatus($"{Lobby.Members.Count} player(s) in lobby", true);
         };
         Lobby.OnStartRequested += StartGame.Begin;
+        Lobby.OnConnectionNotice += notice =>
+        {
+            LoggerInstance.Msg($"[CairnMP] {notice}");
+            _panel.SetStatus(notice, Lobby.IsInLobby);
+            _game?.Chat.AddSystemLine(notice);
+        };
+        Lobby.OnPeerReconnected += Network.OnLobbyPeerReconnected;
     }
 
     private void WirePanelEvents()

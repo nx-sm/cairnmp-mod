@@ -17,6 +17,7 @@ internal static class ModConfig
 
     public static MelonPreferences_Entry<int> DirectPort;
     public static MelonPreferences_Entry<string> DirectPassword;
+    public static MelonPreferences_Entry<int> DirectReconnectSeconds;
 
     public static MelonPreferences_Entry<string> ConnectKey;
     public static MelonPreferences_Entry<string> DisconnectKey;
@@ -41,6 +42,8 @@ internal static class ModConfig
         DirectPort = direct.CreateEntry("Port", 27420);
         // Empty: anyone who can reach the port may join. Both sides must set the same value.
         DirectPassword = direct.CreateEntry("Password", "");
+        // A connection lost without a goodbye: guests redial, hosts keep the seat, this long.
+        DirectReconnectSeconds = direct.CreateEntry("ReconnectSeconds", 300);
 
         var keybinds = MelonPreferences.CreateCategory(CategoryKeybinds);
         ConnectKey = keybinds.CreateEntry("ConnectKey", "F5");

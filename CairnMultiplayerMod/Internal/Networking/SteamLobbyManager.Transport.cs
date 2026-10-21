@@ -15,6 +15,10 @@ namespace CairnMultiplayerMod.Internal.Networking
         private const int SteamGameplayChannel = 0;
 
         private bool _transportOpen;
+
+        // Steam keeps its own P2P sessions alive; it has no reconnection of ours to report.
+        public event Action<string> OnConnectionNotice { add { } remove { } }
+        public event Action<ulong> OnPeerReconnected { add { } remove { } }
         private Callback<P2PSessionRequest_t> _p2pSessionRequestCallback;
         private Callback<P2PSessionConnectFail_t> _p2pSessionConnectFailCallback;
 

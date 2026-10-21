@@ -15,6 +15,8 @@ internal sealed partial class NetworkManager
     private readonly Dictionary<int, HashSet<string>> _enabledExtensionsByPlayer = new();
     // Admission belongs to actual Steam presence, not a client-controlled disconnect packet.
     private readonly HashSet<ulong> _manifestHandledPeers = new();
+    // Extensions hear "session ready" once per session, not again after a reconnection.
+    private bool _sessionReadyNotified;
     private ExtensionNetworkBridge _extensionBridge;
 
     private void InitializeExtensionApi()
@@ -27,14 +29,46 @@ internal sealed partial class NetworkManager
         {
             _enabledExtensionsByPlayer[LocalPlayerId] = MultiplayerApi.Runtime.Manifest()
                 .Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-            MultiplayerApi.Runtime.NotifySessionReady();
+            NotifySessionReadyOnce();
             return;
         }
 
-        SendSteamPacketToHost(PacketId.ClientExtensionManifest, new ClientExtensionManifest
+        SendExtensionManifest();
+    }
+
+    private void SendExtensionManifest()
+        => SendSteamPacketToHost(PacketId.ClientExtensionManifest, new ClientExtensionManifest
         {
             Entries = MultiplayerApi.Runtime.Manifest(),
         }, reliable: true);
+
+    private void NotifySessionReadyOnce()
+    {
+        if (_sessionReadyNotified) return;
+        _sessionReadyNotified = true;
+        MultiplayerApi.Runtime.NotifySessionReady();
+    }
+
+    /// <summary>
+    /// A dropped connection came back (direct connect). Anything reliable sent while it was
+    /// down is lost, so the guest goes through admission again: the host answers a second
+    /// manifest from an admitted player with fresh peer statuses and piton, rope and
+    /// extension snapshots, without announcing a second join.
+    /// </summary>
+    public void OnLobbyPeerReconnected(ulong peerId)
+    {
+        if (!_steamTransportActive || _steamLobby == null) return;
+
+        if (_steamLobby.IsHost)
+        {
+            _manifestHandledPeers.Remove(peerId);
+            return;
+        }
+
+        if (peerId != _steamHostId) return;
+        IsHandshakeComplete = false;
+        SendExtensionManifest();
+        ModLog.Info("[CairnMP] Reconnected; asking the host to resynchronize.");
     }
 
     private bool HandleExtensionHostPacket(ulong remoteSteamId, PacketId id, System.IO.BinaryReader reader)
@@ -130,7 +164,7 @@ internal sealed partial class NetworkManager
         _enabledExtensionsByPlayer[LocalPlayerId] = enabled;
         _enabledExtensionsByPlayer[StableSteamPlayerId(_steamHostId)] = new HashSet<string>(enabled, StringComparer.Ordinal);
         IsHandshakeComplete = true;
-        MultiplayerApi.Runtime.NotifySessionReady();
+        NotifySessionReadyOnce();
         OnHandshakeAck?.Invoke();
     }
 
@@ -230,6 +264,7 @@ internal sealed partial class NetworkManager
     {
         _manifestHandledPeers.Clear();
         _enabledExtensionsByPlayer.Clear();
+        _sessionReadyNotified = false;
         _extensionBridge = null;
         MultiplayerApi.Runtime.Detach();
     }

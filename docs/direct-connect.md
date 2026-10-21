@@ -65,6 +65,26 @@ On a GOG copy, Steam cannot start for Cairn, so hosting always uses Direct IP
 automatically. The Steam lobby browser and room codes stay available to Steam
 players for Steam-only lobbies.
 
+## Dropped connections
+
+If the connection dies **without a goodbye** (Wi-Fi drop, router restart, Tailscale
+switching routes, a game crash), the session is not over yet:
+
+- **Guest:** keeps redialling the host every few seconds for up to **5 minutes**.
+  The status line and chat say *Connection to the host lost. Reconnecting…*
+- **Host:** keeps the guest's seat and climber for 5 minutes. Their name shows
+  *(reconnecting…)* for everyone, and nobody else can take the seat.
+- **When the connection is back,** the guest returns to their own seat under the same
+  player id. The host then resends what a late joiner gets: pitons, rope links and
+  extension state. Positions, weather and time are streamed continuously anyway. Both
+  sides see a *reconnected* message.
+- **If the host's game crashed** and they host again at the same address within the
+  5 minutes, the guest's redial joins the new lobby automatically.
+- **After 5 minutes** the guest returns to the menu and the host frees the seat.
+
+A drop takes about 15 seconds to detect. Leaving on purpose (Leave button, quitting
+Cairn normally, the host closing the lobby) still ends the connection immediately.
+
 ## Settings
 
 `UserData\MelonPreferences.cfg`:
@@ -73,6 +93,7 @@ players for Steam-only lobbies.
 [DirectConnect]
 Port = 27420      # UDP port the host listens on
 Password = ""     # if set, the guest must set the same value
+ReconnectSeconds = 300  # how long a dropped connection is retried / its seat kept; 0 = off
 
 [Player]
 Name = "Player"   # your name in a direct lobby (defaults to your Windows user name)

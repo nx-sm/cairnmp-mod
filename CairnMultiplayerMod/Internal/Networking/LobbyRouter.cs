@@ -96,6 +96,8 @@ namespace CairnMultiplayerMod.Internal.Networking
         public event Action OnLobbyLeft;
         public event Action OnMembersChanged;
         public event Action<ServerStartGame> OnStartRequested;
+        public event Action<string> OnConnectionNotice;
+        public event Action<ulong> OnPeerReconnected;
 
         private void Wire(ILobby lobby)
         {
@@ -112,6 +114,8 @@ namespace CairnMultiplayerMod.Internal.Networking
             lobby.OnLobbyLeft += () => OnLobbyLeft?.Invoke();
             lobby.OnMembersChanged += () => { if (ReferenceEquals(lobby, Current)) OnMembersChanged?.Invoke(); };
             lobby.OnStartRequested += start => { if (ReferenceEquals(lobby, Current)) OnStartRequested?.Invoke(start); };
+            lobby.OnConnectionNotice += notice => { if (ReferenceEquals(lobby, Current)) OnConnectionNotice?.Invoke(notice); };
+            lobby.OnPeerReconnected += peerId => { if (ReferenceEquals(lobby, Current)) OnPeerReconnected?.Invoke(peerId); };
         }
 
         public void Pump(float dt)

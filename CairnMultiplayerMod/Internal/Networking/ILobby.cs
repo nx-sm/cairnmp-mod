@@ -46,6 +46,14 @@ namespace CairnMultiplayerMod.Internal.Networking
         event Action OnMembersChanged;
         event Action<ServerStartGame> OnStartRequested;
 
+        /// <summary>Something worth telling the player about the connection, such as a
+        /// drop being retried.</summary>
+        event Action<string> OnConnectionNotice;
+
+        /// <summary>A connection lost without a goodbye came back. On the host the id is the
+        /// returning guest's; on a guest it is the host's. The session must re-admit.</summary>
+        event Action<ulong> OnPeerReconnected;
+
         void Pump(float dt);
         Task<bool> CreateLobby(HostConfig cfg);
         Task<bool> JoinByCode(string code);
