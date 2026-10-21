@@ -12,14 +12,6 @@ using Il2CppSteamworks;
 
 namespace CairnMultiplayerMod.Internal.Networking
 {
-    internal sealed class LobbyMember
-    {
-        public ulong SteamId { get; init; }
-        public string Name { get; init; } = "";
-        public bool IsHost { get; init; }
-        public bool IsSelf { get; init; }
-    }
-
     /// <summary>
     /// Encapsulates the entire Steam Matchmaking layer: create / join (by code or
     /// SteamID64) / browser / invites / leave. The Steam P2P transport is started
@@ -33,7 +25,7 @@ namespace CairnMultiplayerMod.Internal.Networking
     /// pump there), so there is no marshalling to do when touching Unity
     /// objects.
     /// </summary>
-    internal sealed partial class SteamLobbyManager : IDisposable
+    internal sealed partial class SteamLobbyManager : ILobby
     {
         private const string KeyCairnApp = "cairnmp_app";
         private const string KeyCode = "code";
@@ -129,7 +121,7 @@ namespace CairnMultiplayerMod.Internal.Networking
         private Callback<LobbyDataUpdate_t> _cbLobbyDataUpdate;
 
 
-        public event Action<CSteamID> OnLobbyEntered;
+        public event Action OnLobbyEntered;
         public event Action<string> OnLobbyError;
         public event Action OnLobbyLeft;
         public event Action OnMembersChanged;
@@ -470,6 +462,7 @@ namespace CairnMultiplayerMod.Internal.Networking
         {
             if (_disposed) return;
             _disposed = true;
+            CloseTransport();
             if (ReferenceEquals(_listCallOwner, this)) _listCallOwner = null;
             if (_listCallHookInstalled)
             {

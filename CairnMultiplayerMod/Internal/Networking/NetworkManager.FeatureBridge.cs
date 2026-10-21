@@ -68,7 +68,7 @@ internal sealed partial class NetworkManager
         manifest.Deserialize(reader);
         var result = ExtensionNegotiator.Negotiate(MultiplayerApi.Runtime.Manifest(), manifest.Entries);
         var enabled = result.EnabledExtensionIds.ToArray();
-        SendSteamPayload(new Il2CppSteamworks.CSteamID(remoteSteamId),
+        SendSteamPayload(remoteSteamId,
             BuildPayload(PacketId.ServerExtensionManifestResult, new ServerExtensionManifestResult
             {
                 Accepted = result.Accepted,

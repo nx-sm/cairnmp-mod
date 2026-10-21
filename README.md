@@ -19,6 +19,9 @@ CairnMP runs inside Cairn through MelonLoader (IL2CPP) and connects players over
 a Steam relay (P2P). The lobby owner is authoritative, so no dedicated server is
 required.
 
+Players without Steam matchmaking — a GOG copy, for example — can host or join a
+**Direct IP** lobby over UDP instead; see [Direct connect](docs/direct-connect.md).
+
 Public lobby hosts also publish a small presence record to the CairnMP platform.
 The mod refreshes it every 30 seconds and removes it when the host leaves; the
 platform expires missing heartbeats after 90 seconds. This powers community
@@ -134,6 +137,7 @@ mutes, volume control, and a local microphone test.
 | [Architecture](docs/architecture.md) | Developers | Layer boundaries, packet flow, and conventions |
 | [Managed extension API](docs/multiplayer-api.md) | Mod authors | Host-authoritative integration API |
 | [Proximity voice](docs/proximity-voice.md) | Players and testers | Settings, implementation, and validation |
+| [Direct connect](docs/direct-connect.md) | Players | Play without Steam matchmaking, e.g. a Steam copy with a GOG copy |
 | [Performance diagnostics](docs/performance-diagnostics.md) | Developers and testers | Local frame captures and repeatable solo/multiplayer comparisons |
 | [Security policy](SECURITY.md) | Everyone | Private reporting and security scope |
 | [Changelog](CHANGELOG.md) | Everyone | Version history and compatibility notes |

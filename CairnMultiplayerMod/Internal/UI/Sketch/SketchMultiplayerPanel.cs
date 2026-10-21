@@ -25,12 +25,12 @@ internal sealed class SketchMultiplayerPanel : IMultiplayerPanel
     private enum Screen { Home = 0, ModeSelect = 1, Create = 2, Join = 3, Browse = 4, Lobby = 5 }
 
     private const int MinSlots = 2, MaxSlots = 8, MaxBrowseRows = 5;
-    private static readonly string[] VisLabels = { "Public", "Friends", "Private" };
+    private static readonly string[] VisLabels = { "Public", "Friends", "Private", "Direct IP" };
     private static readonly LobbyVisibility[] VisValues =
-        { LobbyVisibility.Public, LobbyVisibility.FriendsOnly, LobbyVisibility.Private };
+        { LobbyVisibility.Public, LobbyVisibility.FriendsOnly, LobbyVisibility.Private, LobbyVisibility.Direct };
     private static readonly IReadOnlyList<MultiplayerModeRules> ModeValues = MultiplayerModes.Available;
 
-    private readonly SteamLobbyManager _lobby;
+    private readonly ILobby _lobby;
 
     private GameObject _canvasGo;
     private GameObject _contentGo;
@@ -77,7 +77,7 @@ internal sealed class SketchMultiplayerPanel : IMultiplayerPanel
 
     public bool IsVisible => _visible;
 
-    internal SketchMultiplayerPanel(SteamLobbyManager lobby)
+    internal SketchMultiplayerPanel(ILobby lobby)
     {
         _lobby = lobby ?? throw new ArgumentNullException(nameof(lobby));
         _slots = Mathf.Clamp(ModConfig.MaxPlayers?.Value ?? MaxSlots, MinSlots, MaxSlots);
@@ -418,7 +418,7 @@ internal sealed class SketchMultiplayerPanel : IMultiplayerPanel
     private void BuildJoin(GameObject body)
     {
         var codeCell = SketchUiKit.RowStrip(body.transform, "Lobby code", 150f, 360f);
-        _codeInput = SketchUiKit.NativeField(codeCell, "XXXX-XXXX", 16);
+        _codeInput = SketchUiKit.NativeField(codeCell, "CODE or IP:PORT", 64);
         _codeInput.text = _codeDraft;
         _codeInput.textComponent.fontSize = 24f;
         _codeInput.textComponent.alignment = TextAlignmentOptions.Center;

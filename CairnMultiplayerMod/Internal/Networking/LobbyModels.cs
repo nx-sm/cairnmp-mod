@@ -2,12 +2,14 @@ using CairnMultiplayer.Shared;
 namespace CairnMultiplayerMod.Internal.Networking;
 
 /// <summary>Visibility of a created lobby. Public: visible in the browser
-/// and reliable for join-by-code; FriendsOnly/Private: favor the Steam invite.</summary>
+/// and reliable for join-by-code; FriendsOnly/Private: favor the Steam invite;
+/// Direct: no Steam at all — guests join with the host's IP:port.</summary>
 internal enum LobbyVisibility
 {
     Public,
     FriendsOnly,
     Private,
+    Direct,
 }
 
 internal sealed class HostConfig

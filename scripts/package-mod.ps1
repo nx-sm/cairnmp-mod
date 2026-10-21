@@ -80,6 +80,7 @@ Copy-Item "$ModBin/CairnMultiplayerShared.dll" "$PayloadMod/mods/"
 Copy-Item "$ModBin/Concentus.dll" "$PayloadMod/mods/"
 Copy-Item "$ModBin/NAudio.Core.dll" "$PayloadMod/mods/"
 Copy-Item "$ModBin/NAudio.Wasapi.dll" "$PayloadMod/mods/"
+Copy-Item "$ModBin/LiteNetLib.dll" "$PayloadMod/mods/"
 Copy-Item "THIRD-PARTY-NOTICES.txt" "$PayloadMod/mods/"
 $ModZipPath = Join-Path $Dist $ModZipName
 if (Test-Path $ModZipPath)

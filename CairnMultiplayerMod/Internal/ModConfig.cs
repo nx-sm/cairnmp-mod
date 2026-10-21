@@ -8,11 +8,15 @@ internal static class ModConfig
     private static readonly string CategoryRoom = "Room";
     private static readonly string CategoryKeybinds = "Keybinds";
     private static readonly string CategoryDebug = "Debug";
+    private static readonly string CategoryDirect = "DirectConnect";
 
     public static MelonPreferences_Entry<string> PlayerName;
 
     public static MelonPreferences_Entry<string> RoomCode;
     public static MelonPreferences_Entry<int> MaxPlayers;
+
+    public static MelonPreferences_Entry<int> DirectPort;
+    public static MelonPreferences_Entry<string> DirectPassword;
 
     public static MelonPreferences_Entry<string> ConnectKey;
     public static MelonPreferences_Entry<string> DisconnectKey;
@@ -31,6 +35,12 @@ internal static class ModConfig
         var room = MelonPreferences.CreateCategory(CategoryRoom);
         RoomCode = room.CreateEntry("Code", "");
         MaxPlayers = room.CreateEntry("MaxPlayers", 8);
+
+        // Direct connect (no Steam): the host opens this UDP port; guests type "address:port".
+        var direct = MelonPreferences.CreateCategory(CategoryDirect);
+        DirectPort = direct.CreateEntry("Port", 27420);
+        // Empty: anyone who can reach the port may join. Both sides must set the same value.
+        DirectPassword = direct.CreateEntry("Password", "");
 
         var keybinds = MelonPreferences.CreateCategory(CategoryKeybinds);
         ConnectKey = keybinds.CreateEntry("ConnectKey", "F5");

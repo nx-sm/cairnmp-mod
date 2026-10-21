@@ -8,7 +8,7 @@ namespace CairnMultiplayerMod.Internal.UI;
 
 internal static class MultiplayerPanelFactory
 {
-    public static IMultiplayerPanel Create(SteamLobbyManager lobby)
+    public static IMultiplayerPanel Create(ILobby lobby)
     {
         if (lobby == null) throw new ArgumentNullException(nameof(lobby));
         try

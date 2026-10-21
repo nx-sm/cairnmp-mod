@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using CairnMultiplayer.Shared;
 using CairnMultiplayerMod.Internal;
+using CairnMultiplayerMod.Internal.Diagnostics;
 using CairnMultiplayerMod.Internal.Game;
 using CairnMultiplayerMod.Internal.Game.Players;
 using CairnMultiplayerMod.Internal.Game.World;
@@ -51,7 +52,7 @@ public partial class Mod
     private void OnHostRequested(HostConfig config)
     {
         config = WithLocalSteamIdentity(config);
-        LoggerInstance.Msg($"Creating Steam lobby '{config.LobbyName}' as '{config.PlayerName}' " +
+        LoggerInstance.Msg($"Creating lobby '{config.LobbyName}' as '{config.PlayerName}' " +
                            $"(max {config.MaxPlayers}, {config.Visibility}, {config.Mode})...");
         ModConfig.PlayerName.Value = config.PlayerName;
         ModConfig.MaxPlayers.Value = config.MaxPlayers;
@@ -250,9 +251,25 @@ public partial class Mod
         if (!string.IsNullOrWhiteSpace(name))
             return name.Trim();
 
-        return string.IsNullOrWhiteSpace(ModConfig.PlayerName?.Value)
-            ? "Player"
-            : ModConfig.PlayerName.Value.Trim();
+        return LocalPlayerName();
+    }
+
+    /// <summary>The name used without Steam. The config default is "Player" for everyone,
+    /// so a direct-connect guest who never edited it is named after their OS account.</summary>
+    private static string LocalPlayerName()
+    {
+        var configured = ModConfig.PlayerName?.Value?.Trim();
+        if (!string.IsNullOrEmpty(configured) && configured != "Player")
+            return configured;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Environment.UserName)) return Environment.UserName.Trim();
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("lobby.read-os-user-name", exception);
+        }
+        return "Player";
     }
 
 }
