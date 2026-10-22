@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.5.4](#254--2026-10-22-beta) | 2026-10-22 | Beta | Lobby launches can no longer overwrite a co-op run |
 | [2.5.3](#253--2026-10-22-beta) | 2026-10-22 | Beta | Partner holds falls, saves read from disk, no View freeze |
 | [2.5.2](#252--2026-10-22-beta) | 2026-10-22 | Beta | Co-op saves resume their run; View no longer pauses |
 | [2.5.1](#251--2026-10-22-beta) | 2026-10-22 | Beta | Shared drawn rope, falls caught by rewind, co-op saves |
@@ -45,7 +46,10 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
-## [Unreleased]
+## [2.5.4] — 2026-10-22 (beta)
+
+> This beta uses protocol **16**, like 2.5.3. Every player in a lobby must run CairnMP
+> 2.5.4.
 
 ### Fixed
 
