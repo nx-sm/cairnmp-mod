@@ -43,6 +43,23 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- A Rope team launch no longer starts a new game over the co-op run it should
+  continue. The game files a story run as a Summit save, and the mod only looked for
+  Story saves, so every slot looked empty. Both are checked now, a new run goes into
+  the highest free slot, and the log lists the saves the game sees (`[CoopSave]`).
+- The controller's View button no longer opens the pause menu during play. Cairn
+  restores its own bindings after start-up, which put pause back on View: the mod now
+  re-checks every second, across every input action the game has enabled, and the
+  pause menu ignores a pause that came from View. Menu (☰) still pauses. Controllers
+  are read through Unity's input system only, never Steam Input, so a GOG copy
+  behaves the same.
+
+---
+
 ## [2.5.1] — 2026-10-22 (beta)
 
 > This beta uses protocol **16**, like 2.5.0, but every player in a lobby must run

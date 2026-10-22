@@ -170,6 +170,7 @@ internal sealed class StartGameFlow
         if (!CoopSaveInterop.TryGetReadySaveScreen(out var screen)) return;
 
         _coopSavePending = false;
+        CoopSaveInterop.LogSaves();
         var plan = CoopSavePlan.Decide(_coopSlot(), CoopSaveInterop.HasSave, CoopSaveInterop.FindFreeSlot());
         switch (plan.Action)
         {

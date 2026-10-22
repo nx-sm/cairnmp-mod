@@ -12,7 +12,13 @@ namespace CairnMultiplayerMod.Internal.Game.MainMenu;
 /// </summary>
 internal static class CoopSaveInterop
 {
-    private const SaveType Channel = SaveType.Story;
+    /// <summary>
+    /// A story run is started on the Story channel but written to disk as a Summit save
+    /// (SAVEGAMES/…/SUMMIT/SLOT_A.CPK). Looking at Story alone found no save at all, so the
+    /// remembered slot looked empty and a new game was started over the run. A slot counts
+    /// as taken when either channel holds it.
+    /// </summary>
+    private static readonly SaveType[] Channels = { SaveType.Story, SaveType.Summit };
 
     /// <summary>The save screen, once it is open and not busy loading previews.</summary>
     internal static bool TryGetReadySaveScreen(out MainMenuSaveManagementElement screen)
@@ -30,35 +36,68 @@ internal static class CoopSaveInterop
         }
     }
 
-    internal static bool HasSave(byte slot)
+    internal static bool HasSave(byte slot) => SaveChannelOf(slot).HasValue;
+
+    /// <summary>The channel holding a save in that slot, if any.</summary>
+    private static SaveType? SaveChannelOf(byte slot)
     {
         try
         {
-            var saves = SavegameManager.Instance?.GetSavesOfType(Channel);
-            if (saves == null) return false;
-            foreach (var info in saves)
-                if (info.slot == slot) return true;
+            var manager = SavegameManager.Instance;
+            if (manager == null) return null;
+            foreach (var channel in Channels)
+            {
+                var saves = manager.GetSavesOfType(channel);
+                if (saves == null) continue;
+                foreach (var info in saves)
+                    if (info.slot == slot) return channel;
+            }
         }
         catch (Exception exception)
         {
             ModLog.SuppressedException("coop-save.has-save", exception);
         }
-        return false;
+        return null;
     }
 
+    /// <summary>The highest slot with no save on either channel. Starting from the top keeps a
+    /// co-op run clear of slot A, where the game puts a solo story by default.</summary>
     internal static byte? FindFreeSlot()
     {
+        const byte SlotCount = 12; // A to L, as the game's own slot check lists them
         try
         {
-            var manager = SavegameManager.Instance;
-            if (manager != null && manager.FindNextAvailableSlot(Channel, out var free) && free.IsValid)
-                return free.slot;
+            if (SavegameManager.Instance == null) return null;
+            for (var slot = (int)SlotCount - 1; slot >= 0; slot--)
+                if (!HasSave((byte)slot)) return (byte)slot;
         }
         catch (Exception exception)
         {
             ModLog.SuppressedException("coop-save.free-slot", exception);
         }
         return null;
+    }
+
+    /// <summary>Names every save the game sees, so a wrong decision can be told from the log.</summary>
+    internal static void LogSaves()
+    {
+        try
+        {
+            var manager = SavegameManager.Instance;
+            if (manager == null) return;
+            foreach (var channel in Channels)
+            {
+                var saves = manager.GetSavesOfType(channel);
+                var letters = new System.Text.StringBuilder();
+                if (saves != null)
+                    foreach (var info in saves) letters.Append(Letter(info.slot)).Append(' ');
+                ModLog.Info($"[CoopSave] {channel} saves: {(letters.Length == 0 ? "none" : letters.ToString().Trim())}");
+            }
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("coop-save.log-saves", exception);
+        }
     }
 
     internal static bool Resume(MainMenuSaveManagementElement screen, byte slot)
@@ -76,12 +115,14 @@ internal static class CoopSaveInterop
         }
     }
 
-    /// <summary>The game starts a new story in the active slot: make it the free one first.</summary>
+    /// <summary>The game starts a new story in the active slot, and writes it through the Summit
+    /// channel's active slot: both must point at the free one first.</summary>
     internal static bool StartNewGame(MainMenuSaveManagementElement screen, byte slot)
     {
         try
         {
-            SavegameManager.Instance.ChangeActiveSlot(Channel, slot);
+            foreach (var channel in Channels)
+                SavegameManager.Instance.ChangeActiveSlot(channel, slot);
             screen.OnNewGame();
             ModLog.Info($"[CoopSave] Starting the rope team's run in free story slot {Letter(slot)}");
             return true;

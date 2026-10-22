@@ -31,6 +31,7 @@ internal static class GamePatchRegistry
         new("bivouac safety", BivouacDiagnostics.Install, BivouacDiagnostics.Uninstall),
         new("piton rules", PitonRulesPatch.Install, PitonRulesPatch.Uninstall),
         new("lobby constraints", GameSetupConstraintsPatch.Install, GameSetupConstraintsPatch.Uninstall),
+        new("view-button pause guard", PauseOnViewGuardPatch.Install, PauseOnViewGuardPatch.Uninstall),
         new("multiplayer pause", MultiplayerPausePatch.Install, MultiplayerPausePatch.Uninstall),
         new("main-menu buttons", MainMenuButtonIntegration.Install, MainMenuButtonIntegration.Uninstall),
         new("free-roam unlock", FreeRoamUnlockPatch.Install, FreeRoamUnlockPatch.Uninstall),

@@ -137,6 +137,7 @@ public partial class Mod : MelonMod
         MultiplayerPausePatch.Configure(
             () => Network?.IsConnected == true,
             () => _game?.Chat.ForceClose());
+        PauseOnViewGuardPatch.Enabled = () => ModConfig.FreeViewButton.Value;
         GamePatchRegistry.InstallAll();
     }
 
