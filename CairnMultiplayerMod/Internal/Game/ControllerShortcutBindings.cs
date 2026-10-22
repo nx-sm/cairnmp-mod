@@ -16,6 +16,8 @@ internal enum ControllerShortcut
     PushToTalk,
     Panic,
     TakeUpPiton,
+    PlaceMark,
+    ClearMarks,
 }
 
 internal enum ControllerButton
@@ -32,6 +34,8 @@ internal enum ControllerButton
     Menu,
     RightStick,
     DpadDown,
+    LeftTrigger,
+    RightTrigger,
 }
 
 /// <summary>Platform-neutral CairnMP controller layout, shared by runtime input and tests.</summary>
@@ -53,6 +57,8 @@ internal static class ControllerShortcutBindings
         ControllerShortcut.PushToTalk => ControllerButton.LeftShoulder,
         ControllerShortcut.Panic => ControllerButton.RightStick,
         ControllerShortcut.TakeUpPiton => ControllerButton.DpadDown,
+        ControllerShortcut.PlaceMark => ControllerButton.LeftTrigger,
+        ControllerShortcut.ClearMarks => ControllerButton.RightTrigger,
         _ => throw new ArgumentOutOfRangeException(nameof(shortcut), shortcut, null),
     };
 }

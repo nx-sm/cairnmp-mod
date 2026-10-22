@@ -67,6 +67,7 @@ internal sealed class StartGameFlow
         _pendingStartRetries = 0;
         _pendingStartRetryTimer = 0f;
         _coopSavePending = false;
+        _resumeStage = 0;
     }
 
     internal void Begin(ServerStartGame pkt)
@@ -90,12 +91,13 @@ internal sealed class StartGameFlow
                 // The lobby's mode decides the difficulty, so it is re-applied every frame:
                 // the native New Game flow rewrites these options when the player walks
                 // through it, and the last write before the launch is the one that counts.
-                if (!GameOptionsInterop.SetNextGameMode(RulesOf(s), s.SkipTutorials,
-                        s.SkipPractice, s.AssistEnabled, verbose: false))
+                if (!GameOptionsInterop.SetNextGameMode(RulesOf(s), CoopSkipsTutorials,
+                        CoopSkipsTutorials, s.AssistEnabled, verbose: false))
                 {
                     GameOptionsInterop.SetNextGameSkipOptions(
-                        s.SkipTutorials, s.SkipPractice, s.AssistEnabled, verbose: false);
+                        CoopSkipsTutorials, CoopSkipsTutorials, s.AssistEnabled, verbose: false);
                 }
+                SkipNewGameQuestions();
             }
             else
             {
@@ -121,12 +123,13 @@ internal sealed class StartGameFlow
             {
                 var start = _pendingStart.Value;
                 var rules = RulesOf(start);
-                if (!GameOptionsInterop.SetNextGameMode(rules, start.SkipTutorials,
-                        start.SkipPractice, start.AssistEnabled))
+                if (!GameOptionsInterop.SetNextGameMode(rules, CoopSkipsTutorials,
+                        CoopSkipsTutorials, start.AssistEnabled))
                 {
                     GameOptionsInterop.SetNextGameSkipOptions(
-                        start.SkipTutorials, start.SkipPractice, start.AssistEnabled);
+                        CoopSkipsTutorials, CoopSkipsTutorials, start.AssistEnabled);
                 }
+                _skippedQuestions = false;
                 _state.ModeRules = rules;
 
                 _forceNewGameOpts = start;
@@ -146,6 +149,29 @@ internal sealed class StartGameFlow
         TickCoopSave(currentScene);
     }
 
+    /// <summary>A co-op run never plays the tutorials, whatever the host's start message says.</summary>
+    private const bool CoopSkipsTutorials = true;
+
+    private bool _skippedQuestions;
+
+    /// <summary>
+    /// The host already chose the mode, and with it the difficulty; the start message carries
+    /// it to everyone. The game's own New Game flow would still ask each player again —
+    /// difficulty, customisation, tutorials — so those screens are passed straight through:
+    /// the options are already written, the next step launches with them.
+    /// </summary>
+    private void SkipNewGameQuestions()
+    {
+        if (_skippedQuestions || !MainMenuInterop.TryGetCurrentStep(out var step)) return;
+        if (step is not (MainMenuInterop.MainMenuStep.DifficultySelect
+            or MainMenuInterop.MainMenuStep.DifficultyCustomization
+            or MainMenuInterop.MainMenuStep.ActivateTutorials)) return;
+
+        _skippedQuestions = true;
+        MainMenuInterop.ForceMainMenuStep(MainMenuInterop.MainMenuStep.LaunchNewStoryGame);
+        ModLog.Info($"[StartGame] Skipped the game's {step} screen: the host's settings apply, tutorials off");
+    }
+
     /// <summary>
     /// A rope team continues its own run: once the save screen is up, the remembered slot is
     /// loaded, or a new game is started in a free one. Anything that does not work out leaves
@@ -153,6 +179,7 @@ internal sealed class StartGameFlow
     /// </summary>
     private void TickCoopSave(string currentScene)
     {
+        TickResumeWatch(currentScene);
         if (!_coopSavePending) return;
         if (!SceneRoles.IsMainMenuArea(currentScene))
         {
@@ -170,12 +197,17 @@ internal sealed class StartGameFlow
         if (!CoopSaveInterop.TryGetReadySaveScreen(out var screen)) return;
 
         _coopSavePending = false;
-        CoopSaveInterop.LogSaves();
+        CoopSaveInterop.LogSaves(screen);
         var plan = CoopSavePlan.Decide(_coopSlot(), CoopSaveInterop.HasSave, CoopSaveInterop.FindFreeSlot());
         switch (plan.Action)
         {
             case CoopSaveAction.Resume:
+                // Watched either way: a "continue" that throws or quietly does nothing gets the
+                // direct load next, never a new game.
                 CoopSaveInterop.Resume(screen, plan.Slot);
+                _resumeSlot = plan.Slot;
+                _resumeStage = 1;
+                _resumeWaited = 0f;
                 break;
             case CoopSaveAction.NewGame:
                 if (CoopSaveInterop.StartNewGame(screen, plan.Slot)) _rememberCoopSlot(plan.Slot);
@@ -185,5 +217,43 @@ internal sealed class StartGameFlow
                 ModLog.Warning("[CoopSave] No free story slot; leaving the choice to the player.");
                 break;
         }
+    }
+
+    /// <summary>How long a load may take to leave the menu before the next way is tried.</summary>
+    private const float ResumeStageSeconds = 5f;
+
+    private byte _resumeSlot;
+    private int _resumeStage;
+    private float _resumeWaited;
+
+    /// <summary>
+    /// Leaving the menu means the load took. Still there after a few seconds: the direct load,
+    /// then a plain message. Nothing in here ever starts a new game.
+    /// </summary>
+    private void TickResumeWatch(string currentScene)
+    {
+        if (_resumeStage == 0) return;
+        if (!SceneRoles.IsMainMenuArea(currentScene) || _state.LocalPlayerState == PlayerState.Loading)
+        {
+            _resumeStage = 0;
+            return;
+        }
+
+        _resumeWaited += Time.unscaledDeltaTime;
+        if (_resumeWaited < ResumeStageSeconds) return;
+        _resumeWaited = 0f;
+
+        if (_resumeStage == 1)
+        {
+            ModLog.Warning($"[CoopSave] Still on the menu after continuing slot {CoopSaveInterop.Letter(_resumeSlot)}; loading it directly");
+            CoopSaveInterop.ResumeDirectly(_resumeSlot);
+            _resumeStage = 2;
+            return;
+        }
+
+        _resumeStage = 0;
+        var letter = CoopSaveInterop.Letter(_resumeSlot);
+        ModLog.Warning($"[CoopSave] Could not load the rope team's run in slot {letter}. Its save file is untouched.");
+        _panel.SetStatus($"Could not load your co-op save (slot {letter}). Do NOT start a new game: quit and send the log.", true);
     }
 }

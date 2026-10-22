@@ -44,6 +44,34 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- A Rope team launch reads which save slots are taken from the save files on disk.
+  The game's own save list can come back empty (its save manifest goes missing), which
+  hid an existing co-op run and let a launch start over it. A slot with a save file is
+  now never used for a new game. Continuing tries the save screen first, then a direct
+  load; if neither works it stops with a message and changes nothing.
+- A roped fall is held by the partner. Each player's game keeps an invisible,
+  unbreakable piton at the partner's harness on its own climber's rope, so Cairn's own
+  secured fall catches them like any piton. It follows the partner, stays put during a
+  fall, is never synced or taken out with **P**, and is lifted off before every save.
+  The game's own rope distance display has something to measure from again.
+- Holding View no longer freezes the game until Alt+Tab. Blocking the game's controls
+  also stopped it receiving input events, including View's own release; the controller
+  modifier now only switches off the game's actions.
+- Joining players no longer go through the difficulty and tutorial screens: the host's
+  mode and difficulty apply to everyone, and co-op runs always skip the tutorials.
+
+### Changed
+
+- Trail marks: **B** always leaves a mark and no longer removes one by aiming at it;
+  **Alt + B** clears every mark on the face, for everyone. On a controller, **View +
+  LT** leaves a mark and **View + RT** clears them.
+
+---
+
 ## [2.5.2] — 2026-10-22 (beta)
 
 > This beta uses protocol **16**, like 2.5.1, but every player in a lobby must run

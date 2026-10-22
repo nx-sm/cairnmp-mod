@@ -72,6 +72,8 @@ in `UserData\MelonPreferences.cfg` to keep Cairn's own View binding.
 | `View/Share` + D-pad `←` / `→` | Select a shared ground item |
 | `View/Share` + D-pad `↑` | Show or hide player names |
 | `View/Share` + D-pad `↓` | Take out the nearest piton (Rope team) |
+| `View/Share` + `LT/L2` | Leave a trail mark where you aim |
+| `View/Share` + `RT/R2` | Clear every trail mark |
 | `View/Share` + `RB/R1` | Place a multiplayer ping |
 | Hold `View/Share` + `LB/L1` | Push to talk |
 | `View/Share` + right-stick click | Emergency input release |
@@ -97,6 +99,13 @@ Run `/help` for the complete command list.
 
 Feature-provided commands participate automatically when their usage string marks
 an argument as `<player>`.
+
+### Trail marks
+
+| Key | Action |
+| --- | --- |
+| `B` or `View/Share` + `LT/L2` | Leave a mark where you aim (8 per climber; the oldest goes) |
+| `Alt` + `B` or `View/Share` + `RT/R2` | Clear every mark on the face, for everyone |
 
 ### Climb as a rope team
 

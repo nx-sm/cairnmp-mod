@@ -996,7 +996,7 @@ public sealed class GameplayRegressionTests
     }
 
     [Fact]
-    public void MarkingTheSameSpotTwiceTakesItBack()
+    public void MarkingTheSameSpotTwiceLeavesTwoMarks()
     {
         var (runtime, _, game) = Create(new TrailMarksFeature());
         var spot = new WorldPosition(10, 20, 30);
@@ -1004,7 +1004,50 @@ public sealed class GameplayRegressionTests
         runtime.ExecuteHostCommand(2, Command("marks.edit", new TrailMarkEdit(spot)));
         runtime.ExecuteHostCommand(2, Command("marks.edit", new TrailMarkEdit(spot)));
 
+        Assert.Equal(2, game.WorldImpl.Marks[2].Count);
+    }
+
+    [Fact]
+    public void ClearingWipesEveryClimbersMarks()
+    {
+        var (runtime, _, game) = Create(new TrailMarksFeature());
+        runtime.ExecuteHostCommand(1, Command("marks.edit", new TrailMarkEdit(new WorldPosition(1, 2, 3))));
+        runtime.ExecuteHostCommand(2, Command("marks.edit", new TrailMarkEdit(new WorldPosition(4, 5, 6))));
+
+        runtime.ExecuteHostCommand(2, Command("marks.clear", new TrailMarksClear()));
+
+        Assert.Empty(game.WorldImpl.Marks[1]);
         Assert.Empty(game.WorldImpl.Marks[2]);
+        Assert.Equal("Marks cleared.", game.HudImpl.Messages["marks.marks"]);
+    }
+
+    [Theory]
+    [InlineData(false, "marks.edit")]
+    [InlineData(true, "marks.clear")]
+    public void BLeavesAMarkAndAltBClearsThem(bool alt, string expected)
+    {
+        var bridge = new Bridge(isHost: false);
+        var (_, host, game) = Create(new TrailMarksFeature(), bridge: bridge);
+        game.InputImpl.Alt = alt;
+        game.InputImpl.Press(GameKey.B);
+
+        host.Tick(FeaturePhase.Always);
+
+        Assert.Equal(new[] { expected }, bridge.Commands);
+    }
+
+    [Theory]
+    [InlineData((int)GameInputAction.PlaceMarkController, "marks.edit")]
+    [InlineData((int)GameInputAction.ClearMarksController, "marks.clear")]
+    public void TheControllerLeavesAndClearsMarksToo(int action, string expected)
+    {
+        var bridge = new Bridge(isHost: false);
+        var (_, host, game) = Create(new TrailMarksFeature(), bridge: bridge);
+        game.InputImpl.Press((GameInputAction)action);
+
+        host.Tick(FeaturePhase.Always);
+
+        Assert.Equal(new[] { expected }, bridge.Commands);
     }
 
     [Fact]
@@ -1459,6 +1502,8 @@ public sealed class GameplayRegressionTests
         public bool IsPauseMenuActive => false;
         public bool WasPressed(GameInputAction action) => _actions.Remove(action);
         public bool WasKeyPressed(GameKey key) => _pressed.Remove(key);
+        internal bool Alt;
+        public bool IsAltHeld => Alt;
         internal void Press(GameKey key) => _pressed.Add(key);
         internal void Press(GameInputAction action) => _actions.Add(action);
     }

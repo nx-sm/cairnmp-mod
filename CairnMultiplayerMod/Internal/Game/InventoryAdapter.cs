@@ -556,6 +556,42 @@ internal sealed class InventoryAdapter : IInventoryApi
         }
     }
 
+    /// <summary>Takes one of that item out of the bag, outside any transfer.</summary>
+    internal static bool TryTakeOne(int definitionId)
+    {
+        try
+        {
+            var manager = InventoryManager.Instance;
+            var item = manager?.GetItem((InventoryItemStringId)definitionId);
+            return item != null && manager.BagInventoryData.Remove(item, 1) == 1;
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("inventory.take-one", exception);
+            return false;
+        }
+    }
+
+    /// <summary>The item id of a piton the climber carries, if any.</summary>
+    internal static int? FindPitonItemId()
+    {
+        try
+        {
+            var bag = InventoryManager.Instance?.BagInventoryData;
+            if (bag == null) return null;
+            for (var index = 0; index < bag.Count; index++)
+            {
+                var data = bag.GetBagItemData(index)?.ItemData;
+                if (data?.InventoryItem?.Type == InventoryItemType.ClimbingGear) return data.itemId.value;
+            }
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("inventory.find-piton", exception);
+        }
+        return null;
+    }
+
     /// <summary>Puts one of that item in the bag, outside any transfer.</summary>
     internal static bool TryStoreOne(int definitionId)
     {

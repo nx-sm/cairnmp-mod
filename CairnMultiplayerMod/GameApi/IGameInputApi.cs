@@ -6,6 +6,8 @@ internal enum GameInputAction
     PingController,
     Panic,
     PickupSharedItemController,
+    PlaceMarkController,
+    ClearMarksController,
 }
 
 internal enum GameKey
@@ -22,4 +24,7 @@ internal interface IGameInputApi
     bool IsPauseMenuActive { get; }
     bool WasPressed(GameInputAction action);
     bool WasKeyPressed(GameKey key);
+
+    /// <summary>True while either Alt key is held, for Alt + key shortcuts.</summary>
+    bool IsAltHeld { get; }
 }

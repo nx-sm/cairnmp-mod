@@ -52,6 +52,8 @@ internal static class ModControllerInput
         ControllerButton.DpadLeft => gamepad.dpad.left,
         ControllerButton.DpadRight => gamepad.dpad.right,
         ControllerButton.DpadDown => gamepad.dpad.down,
+        ControllerButton.LeftTrigger => gamepad.leftTrigger,
+        ControllerButton.RightTrigger => gamepad.rightTrigger,
         ControllerButton.Menu => gamepad.startButton,
         ControllerButton.RightStick => gamepad.rightStickButton,
         _ => null,

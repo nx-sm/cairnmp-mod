@@ -14,15 +14,19 @@ internal static class InputInterop
     private static bool _savedDisableInputs;
     // Track the applied state, rather than the request, so a missing singleton is retried.
     private static bool _blockApplied;
+    private static bool _eventsIgnored;
     private static bool _mapDiagLogged;
 
     /// <summary>
     /// Unblocking must rebuild Cairn's action-map context; clearing its two input flags alone
     /// leaves the current maps disabled.
     /// </summary>
-    public static void ReconcileGameplayInput(bool wantBlocked)
+    /// <param name="ignoreEvents">Also stop the game taking input events at all — for typing
+    /// only. A controller modifier must keep events flowing, or its own release is lost.</param>
+    public static void ReconcileGameplayInput(bool wantBlocked, bool ignoreEvents = true)
     {
-        if (wantBlocked == _blockApplied) return;
+        ignoreEvents &= wantBlocked;
+        if (wantBlocked == _blockApplied && ignoreEvents == _eventsIgnored) return;
 
         try
         {
@@ -31,10 +35,11 @@ internal static class InputInterop
 
             if (wantBlocked)
             {
-                _savedDisableInputs = mgr.disableInputs;
+                if (!_blockApplied) _savedDisableInputs = mgr.disableInputs;
                 mgr.disableInputs = true;
-                mgr.SetIgnoreInputEvents(true);
+                mgr.SetIgnoreInputEvents(ignoreEvents);
                 _blockApplied = true;
+                _eventsIgnored = ignoreEvents;
             }
             else
             {
@@ -43,6 +48,7 @@ internal static class InputInterop
                 mgr.EnableInputs();
                 mgr.UpdateInputContext();
                 _blockApplied = false;
+                _eventsIgnored = false;
                 LogMapStatusOnce(mgr);
             }
         }
@@ -143,6 +149,7 @@ internal static class InputInterop
             ModLog.Warning($"[Input] ForceClearBlock failed: {ex.Message}");
         }
         _blockApplied = false;
+        _eventsIgnored = false;
     }
 
     private static void LogMapStatusOnce(Il2Cpp.InputManager mgr)

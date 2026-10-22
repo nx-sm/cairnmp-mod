@@ -60,6 +60,8 @@ internal sealed class RopeCoupleController
         if (_state.LocalPlayerState == PlayerState.InGame) RopeVisuals.Update(_network.LocalPlayerId);
         else RopeVisuals.HideAll();
 
+        TickAnchor(canAct);
+
         if (!canAct) return;
 
         if (!InputCaptureState.IsKeyboardCaptured)
@@ -233,10 +235,32 @@ internal sealed class RopeCoupleController
         ModLog.Info($"[RopeCouple] Clip to player {bestId} at {bestDist:F1}m");
     }
 
+    /// <summary>
+    /// The partner holds the rope like a piton: an invisible anchor at their harness on our own
+    /// Lifeline, so Cairn's own secured fall catches us. Only while both of us are on the wall.
+    /// </summary>
+    private void TickAnchor(bool canAct)
+    {
+        var self = _network.LocalPlayerId;
+        var partner = RopeLinkState.PartnerOf(self);
+        var active = canAct && LeadAndFollow && partner >= 0
+                     && _network.RemotePlayers.TryGetValue(partner, out var remote)
+                     && remote?.State == PlayerState.InGame;
+
+        Vector3? partnerHarness = null;
+        if (active && RemotePlayerManager.TryGetGhostHarnessAttachPosition(partner, out var harness))
+            partnerHarness = harness;
+
+        var falling = PawnCaptureInterop.GetLocalPawnState() == NetFrame.PawnStateType.Falling;
+        RopeAnchor.Tick(active, partnerHarness, falling);
+    }
+
     internal void ClearLinks()
     {
         RopeLinkState.Clear();
         RopeVisuals.Clear();
+        RopeAnchor.Tick(false, null, false);
+        RopeAnchor.Forget();
         _ropeHardTornDown = false;
     }
 

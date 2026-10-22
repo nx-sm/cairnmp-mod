@@ -16,19 +16,20 @@ namespace CairnMultiplayerMod.Features;
 ///
 /// The host owns the marks so a latecomer receives them all on arrival, and so no client can
 /// bury the face under thousands of them.
+///
+/// B always leaves a mark; Alt + B wipes the face clean, everyone's marks at once. Taking a
+/// single mark back by aiming at it again was hard to hit and easy to trigger by accident.
 /// </summary>
 internal sealed class TrailMarksFeature : MultiplayerFeature
 {
     private const GameKey MarkKey = GameKey.B;
-
-    /// <summary>Aiming this close to one of your own marks removes it instead of stacking.</summary>
-    private const float RemoveRangeMeters = 3f;
 
     private const int MaxMarksPerPlayer = 8;
     private const float NoticeSeconds = 3f;
 
     private PerPlayerState<TrailMarkSet> _marks;
     private HostCommand<TrailMarkEdit> _edit;
+    private HostCommand<TrailMarksClear> _clear;
 
     private readonly Dictionary<int, List<WorldPosition>> _known = new();
 
@@ -38,6 +39,7 @@ internal sealed class TrailMarksFeature : MultiplayerFeature
     {
         _marks = feature.PerPlayerState<TrailMarkSet>("set", OnMarksChanged);
         _edit = feature.HostCommand<TrailMarkEdit>("edit", OnEditRequested);
+        _clear = feature.HostCommand<TrailMarksClear>("clear", OnClearRequested);
 
         feature.EveryFrame(TickInput, FeaturePhase.Always);
         feature.OnPlayerLeft((playerId, _) => Forget(playerId));
@@ -59,54 +61,56 @@ internal sealed class TrailMarksFeature : MultiplayerFeature
 
     private void TickInput()
     {
-        if (KeyboardCaptured || !IsConnected) return;
-        if (!Game.Input.WasKeyPressed(MarkKey)) return;
-        if (!Game.World.TryGetAimPoint(out var point)) return;
+        if (!IsConnected) return;
 
+        // Controller: View + LT leaves a mark, View + RT clears the face.
+        if (Game.Input.WasPressed(GameInputAction.ClearMarksController))
+        {
+            _clear.Send(new TrailMarksClear());
+            return;
+        }
+        var place = Game.Input.WasPressed(GameInputAction.PlaceMarkController);
+
+        if (!KeyboardCaptured && Game.Input.WasKeyPressed(MarkKey))
+        {
+            if (Game.Input.IsAltHeld)
+            {
+                _clear.Send(new TrailMarksClear());
+                return;
+            }
+            place = true;
+        }
+
+        if (!place || !Game.World.TryGetAimPoint(out var point)) return;
         _edit.Send(new TrailMarkEdit(point));
     }
 
-    /// <summary>
-    /// The host is the only one who edits a set, which keeps the count honest and makes the
-    /// same press mean "place" or "remove" for everyone in the same way.
-    /// </summary>
+    /// <summary>The host is the only one who edits a set, which keeps the count honest.</summary>
     private void OnEditRequested(HostRequest<TrailMarkEdit> request)
     {
-        var owner = request.FromPlayerId;
-        var positions = new List<WorldPosition>(Current(owner));
-
-        var removed = RemoveNear(positions, request.Message.Position);
-        if (!removed)
+        var positions = new List<WorldPosition>(Current(request.FromPlayerId));
+        if (positions.Count >= MaxMarksPerPlayer)
         {
-            if (positions.Count >= MaxMarksPerPlayer)
-            {
-                // The oldest goes rather than refusing: a full set must not turn the key dead.
-                positions.RemoveAt(0);
-            }
-            positions.Add(request.Message.Position);
+            // The oldest goes rather than refusing: a full set must not turn the key dead.
+            positions.RemoveAt(0);
         }
+        positions.Add(request.Message.Position);
 
         request.Publish(_marks, new TrailMarkSet(positions));
     }
 
-    private static bool RemoveNear(List<WorldPosition> positions, WorldPosition target)
+    /// <summary>Wipes every climber's marks: the face is shared, so is cleaning it.</summary>
+    private void OnClearRequested(HostRequest<TrailMarksClear> request)
     {
-        for (var index = 0; index < positions.Count; index++)
+        request.Publish(_marks, new TrailMarkSet(new List<WorldPosition>()));
+        var others = new List<int>();
+        foreach (var pair in _known)
+            if (pair.Key != request.FromPlayerId && pair.Value.Count > 0) others.Add(pair.Key);
+        request.AfterCommit(() =>
         {
-            if (DistanceSquared(positions[index], target) > RemoveRangeMeters * RemoveRangeMeters)
-                continue;
-            positions.RemoveAt(index);
-            return true;
-        }
-        return false;
-    }
-
-    private static float DistanceSquared(WorldPosition left, WorldPosition right)
-    {
-        var dx = left.X - right.X;
-        var dy = left.Y - right.Y;
-        var dz = left.Z - right.Z;
-        return dx * dx + dy * dy + dz * dz;
+            foreach (var playerId in others)
+                _marks.Set(playerId, new TrailMarkSet(new List<WorldPosition>()));
+        });
     }
 
     private IReadOnlyList<WorldPosition> Current(int playerId)
@@ -122,7 +126,7 @@ internal sealed class TrailMarksFeature : MultiplayerFeature
 
         if (playerId != LocalPlayerId) return;
         Game.Hud.ShowMessage("marks",
-            positions.Count == 0 ? "Mark removed." : $"Mark left ({positions.Count}/{MaxMarksPerPlayer}).",
+            positions.Count == 0 ? "Marks cleared." : $"Mark left ({positions.Count}/{MaxMarksPerPlayer}).",
             NoticeSeconds);
     }
 
@@ -155,6 +159,13 @@ internal sealed class TrailMarkEdit : IPacket
 
     public void Deserialize(BinaryReader reader)
         => Position = new WorldPosition(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+}
+
+/// <summary>Asks the host to wipe every mark from the face. Carries nothing.</summary>
+internal sealed class TrailMarksClear : IPacket
+{
+    public void Serialize(BinaryWriter writer) => writer.Write((byte)1);
+    public void Deserialize(BinaryReader reader) => reader.ReadByte();
 }
 
 internal sealed class TrailMarkSet : IPacket

@@ -55,8 +55,19 @@ internal sealed class GameInputAdapter : IGameInputApi
                                      || ModControllerInput.WasPressed(ControllerShortcut.Panic),
             GameInputAction.PickupSharedItemController =>
                 ModControllerInput.WasPressed(ControllerShortcut.PickupSharedItem),
+            GameInputAction.PlaceMarkController => ModControllerInput.WasPressed(ControllerShortcut.PlaceMark),
+            GameInputAction.ClearMarksController => ModControllerInput.WasPressed(ControllerShortcut.ClearMarks),
             _ => false,
         };
+    }
+
+    public bool IsAltHeld
+    {
+        get
+        {
+            var keyboard = Keyboard.current;
+            return keyboard != null && (keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed);
+        }
     }
 
     public bool WasKeyPressed(GameKey key)

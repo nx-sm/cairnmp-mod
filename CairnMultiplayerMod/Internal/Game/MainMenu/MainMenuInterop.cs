@@ -24,6 +24,24 @@ internal static class MainMenuInterop
         ActivateTutorials = 22,
     }
 
+    /// <summary>The step the native main menu is on, if one is open.</summary>
+    public static bool TryGetCurrentStep(out MainMenuStep step)
+    {
+        step = default;
+        try
+        {
+            var menu = UnityEngine.Object.FindObjectOfType<NativeMainMenu>();
+            if (menu == null) return false;
+            step = (MainMenuStep)(int)menu.step;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("main-menu.current-step", exception);
+            return false;
+        }
+    }
+
     /// <summary>Cairn consumes and clears this nullable value from its next Update.</summary>
     public static bool ForceMainMenuStep(MainMenuStep step)
     {

@@ -170,7 +170,8 @@ public partial class Mod
         ModControllerInput.Update();
         InputCaptureState.IsControllerShortcutCaptured = ModControllerInput.IsModifierHeld
             && (_multiplayerModeActive || SceneRoles.IsMainMenu(CurrentScene));
-        InputInterop.ReconcileGameplayInput(InputCaptureState.WantsGameplayBlocked);
+        InputInterop.ReconcileGameplayInput(InputCaptureState.WantsGameplayBlocked,
+            InputCaptureState.WantsInputEventsIgnored);
 
         if (_multiplayerModeActive)
         {

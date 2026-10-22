@@ -66,6 +66,7 @@ internal sealed class UnavailableGameApi : IGameApi
         public bool IsPauseMenuActive => false;
         public bool WasPressed(GameInputAction action) => false;
         public bool WasKeyPressed(GameKey key) => false;
+        public bool IsAltHeld => false;
     }
 
     private sealed class UnavailableHudApi : IGameHudApi

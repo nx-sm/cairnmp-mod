@@ -319,6 +319,8 @@ internal static partial class RopeInterop
             {
                 var piton = placed[i]?.Piton;
                 if (piton == null || piton.Pointer == IntPtr.Zero) continue;
+                // The partner's invisible anchor is not a piton anyone can take out.
+                if (RopeAnchor.IsAnchor(piton.Pointer)) continue;
                 var transform = piton.transform;
                 if (transform == null || transform.Pointer == IntPtr.Zero) continue;
                 var squared = (transform.position - from).sqrMagnitude;
@@ -414,7 +416,10 @@ internal static partial class RopeInterop
         }
     }
 
-    private static Il2Cpp.ClimbingV2PawnController ResolveLocalClimbController()
+    /// <summary>A piton this Lifeline holds that is nobody's to sync (the rope anchor).</summary>
+    internal static void IgnorePiton(IntPtr pointer) => _pitons.Ignore(pointer);
+
+    internal static Il2Cpp.ClimbingV2PawnController ResolveLocalClimbController()
     {
         if (_localClimbControllerCached != null) return _localClimbControllerCached;
         try
