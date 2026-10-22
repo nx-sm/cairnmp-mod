@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.5.0](#250--2026-10-22-beta) | 2026-10-22 | Beta | Rope team without the Climbot: leader and last climber
 | [2.4.0](#240--2026-10-22-beta) | 2026-10-22 | Beta | Direct-connect lobbies for GOG and Steam copies together |
 | [2.3.1](#231--2026-10-15-beta) | 2026-10-15 | Beta | Game modes, races and rescues that keep their word |
 | [2.3.0](#230--2026-09-18-beta) | 2026-09-18 | Beta | Game modes, downed climbers and a rebuilt panel |
@@ -41,10 +42,10 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
-## [Unreleased]
+## [2.5.0] — 2026-10-22 (beta)
 
-> Protocol **16**: rope clips now name the leader first. Every player in a lobby must
-> run the same build.
+> This beta uses protocol **16**: rope clips now name the leader first. Every player in a
+> lobby must run CairnMP 2.5.0.
 
 ### Changed
 
