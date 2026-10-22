@@ -1073,41 +1073,95 @@ public sealed class GameplayRegressionTests
         Assert.Equal(0f, game.LifeImpl.Exhausted);
     }
 
-    [Fact]
-    public void ADeathThatPlaysOutHandsTheRopeToTheSurvivor()
+    /// <summary>A roped rope-team climber who has just come off the wall, partner standing.</summary>
+    private static (ExtensionRuntime runtime, FeatureHost host, Game game) FallingOnTheRope(
+        MultiplayerMode mode = MultiplayerMode.RopeTeam)
     {
-        var (runtime, _, game) = Create(new ReviveFeature());
-
-        runtime.ExecuteHostCommand(2, Command("revive.downed", new DownedChanged(ClimberCondition.Out)));
-
-        Assert.Equal(new[] { 2 }, game.PlayersImpl.YieldedLead);
+        var (runtime, host, game) = Create(new ReviveFeature(), mode);
+        game.PlayersImpl.InGame = new[] { 2 };
+        game.PlayersImpl.Roped.Add(2);
+        game.PlayersImpl.Falling = true;
+        host.Tick(FeaturePhase.Always);
+        game.PlayersImpl.Falling = false;
+        return (runtime, host, game);
     }
 
     [Fact]
-    public void OutsideTheRopeTeamADeathChangesNoRope()
+    public void TheRopeCatchesAFallingClimberByRewindingThem()
     {
-        var (runtime, _, game) = Create(new ReviveFeature(), MultiplayerMode.Race);
+        var (_, host, game) = FallingOnTheRope();
 
-        runtime.ExecuteHostCommand(2, Command("revive.downed", new DownedChanged(ClimberCondition.Out)));
+        Assert.True(game.LifeImpl.ReportDeath());
+        host.Tick(FeaturePhase.Always);
 
-        Assert.Empty(game.PlayersImpl.YieldedLead);
+        Assert.Equal(1, game.LifeImpl.Rewinds);
+        Assert.False(game.LifeImpl.IsDown);
+        Assert.False(game.LifeImpl.RunEnded);
+        Assert.Equal("Your rope held. Back where you came off.", game.HudImpl.Messages["revive.notice"]);
+        Assert.False(game.HudImpl.Messages.ContainsKey("revive.countdown"));
     }
 
     [Fact]
-    public void OnlyTheHostDecidesWhoLeads()
+    public void WhenTheGameRefusesToRewindTheClimberWaitsForAPartnerAsBefore()
     {
-        var (runtime, _, game) = Create(new ReviveFeature(), bridge: new Bridge(isHost: false));
+        var (_, host, game) = FallingOnTheRope();
+        game.LifeImpl.RewindAllowed = false;
 
-        runtime.ApplyState(new ServerExtensionState
-        {
-            ExtensionId = FeatureHost.CoreExtensionId,
-            StateId = "revive.conditions",
-            ScopePlayerId = 2,
-            Revision = 1,
-            Payload = Bytes(new DownedChanged(ClimberCondition.Out)),
-        });
+        Assert.True(game.LifeImpl.ReportDeath());
+        host.Tick(FeaturePhase.Always);
 
-        Assert.Empty(game.PlayersImpl.YieldedLead);
+        Assert.True(game.LifeImpl.IsDown);
+        Assert.NotNull(game.LifeImpl.CanRevive);
+        Assert.False(game.LifeImpl.RunEnded);
+    }
+
+    [Fact]
+    public void ARewindThatNeverBringsTheClimberBackBecomesAnOrdinaryDowning()
+    {
+        var (_, host, game) = FallingOnTheRope();
+        game.LifeImpl.RewindRevives = false;
+
+        Assert.True(game.LifeImpl.ReportDeath());
+        game.TimeImpl.Now += 10f;
+        host.Tick(FeaturePhase.Always);
+        game.TimeImpl.Now += 1f;
+        host.Tick(FeaturePhase.Always);
+
+        Assert.True(game.LifeImpl.IsDown);
+        Assert.False(game.LifeImpl.RunEnded);
+        Assert.Contains("revive.countdown", game.HudImpl.Messages.Keys);
+    }
+
+    [Fact]
+    public void ADeathLongAfterTheFallIsNotTheRopesToCatch()
+    {
+        var (_, _, game) = FallingOnTheRope();
+        game.TimeImpl.Now += 10f;
+
+        game.LifeImpl.ReportDeath();
+
+        Assert.Equal(0, game.LifeImpl.Rewinds);
+    }
+
+    [Fact]
+    public void AnUnropedFallIsNotCaught()
+    {
+        var (_, _, game) = FallingOnTheRope();
+        game.PlayersImpl.Roped.Clear();
+
+        game.LifeImpl.ReportDeath();
+
+        Assert.Equal(0, game.LifeImpl.Rewinds);
+    }
+
+    [Fact]
+    public void OutsideTheRopeTeamTheRopeCatchesNothing()
+    {
+        var (_, _, game) = FallingOnTheRope(MultiplayerMode.Race);
+
+        game.LifeImpl.ReportDeath();
+
+        Assert.Equal(0, game.LifeImpl.Rewinds);
     }
 
     [Fact]
@@ -1475,6 +1529,21 @@ public sealed class GameplayRegressionTests
             return true;
         }
 
+        /// <summary>Whether the game agrees to rewind, and whether the rewind brings the
+        /// climber back at once (it does in the game a few frames later).</summary>
+        internal bool RewindAllowed = true;
+        internal bool RewindRevives = true;
+        internal int Rewinds;
+
+        public bool TryRewindFall(out string refusal)
+        {
+            refusal = RewindAllowed ? null : "NotEnoughTape";
+            if (!RewindAllowed) return false;
+            Rewinds++;
+            if (RewindRevives) IsDown = false;
+            return true;
+        }
+
         public IGameRegistration AddRevivePrompt(Func<int, bool> canRevive, Action<int> onRevive)
         {
             CanRevive = canRevive;
@@ -1576,8 +1645,6 @@ public sealed class GameplayRegressionTests
         public bool IsLocalPlayerFalling => Falling;
         public bool IsRopedToLocalPlayer(int playerId) => Roped.Contains(playerId);
         public bool ShakeLocalClimberGrip() { Shaken++; return true; }
-        internal readonly List<int> YieldedLead = new();
-        public void YieldRopeLead(int playerId) => YieldedLead.Add(playerId);
         public void ResetAppearanceCaches() { }
     }
 

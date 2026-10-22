@@ -28,13 +28,8 @@ namespace CairnMultiplayerMod.Internal.Networking
         internal NetworkManager(Func<IEnumerable<(int a, int b)>> ropeLinks)
             => _ropeLinks = ropeLinks ?? throw new ArgumentNullException(nameof(ropeLinks));
 
-        /// <summary>Host only: who leads the next rope tied.</summary>
-        internal Authoritative.RopeOrder RopeOrder { get; } = new();
-
-        /// <summary>
-        /// True while the session's mode gives ropes a leader and a last climber. Off, a clip
-        /// keeps the requester first, as before, and the host does not judge distance.
-        /// </summary>
+        /// <summary>True while the session plays as a rope team: the host then refuses a rope
+        /// between climbers too far apart.</summary>
         internal Func<bool> LeadAndFollow { get; set; } = () => false;
 
         /// <summary>Where a player stands, local or remote, or null when unknown.</summary>

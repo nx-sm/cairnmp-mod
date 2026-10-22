@@ -21,7 +21,7 @@ internal sealed class RopeCoupleController
     internal const string ToggleKeyName = "L";
     private static readonly Key ToggleKey = System.Enum.Parse<Key>(ToggleKeyName);
 
-    internal const string TakeUpPitonKeyName = "T";
+    internal const string TakeUpPitonKeyName = "P";
     private static readonly Key TakeUpPitonKey = System.Enum.Parse<Key>(TakeUpPitonKeyName);
 
     /// <summary>Used when the game's netplay tweakables are not loaded yet.</summary>
@@ -54,38 +54,37 @@ internal sealed class RopeCoupleController
         ApplyModeRules();
 
         // Teardown must remain reachable outside InGame.
-        if (!TickRopeSafety()) return;
+        var canAct = TickRopeSafety();
 
-        if (_state.LocalPlayerState != PlayerState.InGame)
-            return;
+        // Drawn on every screen, a downed partner's rope included.
+        if (_state.LocalPlayerState == PlayerState.InGame) RopeVisuals.Update(_network.LocalPlayerId);
+        else RopeVisuals.HideAll();
+
+        if (!canAct) return;
 
         if (!InputCaptureState.IsKeyboardCaptured)
         {
             HandleRopeClipInput();
             HandlePitonTakeUpInput();
         }
-        TickRopeTeam();
     }
 
     /// <summary>
     /// The piton rules follow the session: playing without the Climbot is no reason to refuse
-    /// a piton, and a follower leaves the pitons to the leader. Outside a session the game
-    /// decides alone.
+    /// a piton. Outside a session the game decides alone.
     /// </summary>
     private void ApplyModeRules()
     {
         var inSession = _network.IsConnected && _network.IsHandshakeComplete;
         var rules = _state.ModeRules;
-        var withoutClimbot = inSession
+        PitonRulesPatch.WithoutClimbot = inSession
             && (rules.ExtraConstraints & CairnMultiplayer.Shared.ClimbConstraints.NoClimbot) != 0;
-        var follower = inSession && rules.LeadAndFollow && RopeLinkState.IsLast(_network.LocalPlayerId);
-        PitonRulesPatch.Update(withoutClimbot, follower);
         RopeInterop.RestoreOwnPitonsAfterReload = inSession && rules.LeadAndFollow;
     }
 
     /// <summary>
-    /// The climbers carry the gear now: the last one on the rope takes the pitons out by hand.
-    /// A climber on their own does both jobs, so they may take out any piton within reach.
+    /// The climbers carry the gear now that there is no Climbot: anyone takes a piton out by
+    /// hand, whoever placed it and whoever is ahead.
     /// </summary>
     private void HandlePitonTakeUpInput()
     {
@@ -94,16 +93,11 @@ internal sealed class RopeCoupleController
         var pressed = keyboard != null && keyboard[TakeUpPitonKey].wasPressedThisFrame;
         if (!pressed && !ModControllerInput.WasPressed(ControllerShortcut.TakeUpPiton))
             return;
-
-        if (RopeLinkState.IsLeader(_network.LocalPlayerId))
-        {
-            _notify("You lead the rope: the last climber takes the pitons out.");
-            return;
-        }
         if (!LocalPlayerInterop.TryGetPose(out var localPos, out _)) return;
 
         var refusal = RopeInterop.TryTakeUpClosestPiton(localPos,
             RopeInterop.PitonTakeUpReachMeters(FallbackTakeUpReachMeters));
+        if (refusal != null) ModLog.Info("[Piton] Not taken out: " + refusal);
         _notify(refusal ?? "Piton taken out and stowed.");
     }
 
@@ -132,9 +126,6 @@ internal sealed class RopeCoupleController
 
         if (hardUnsafe)
         {
-            if (RopeInterop.HasRopeTeamAnchors)
-                RopeInterop.ReleaseAllAnchors();
-
             if (!_ropeHardTornDown)
             {
                 _ropeHardTornDown = true;
@@ -148,11 +139,6 @@ internal sealed class RopeCoupleController
         }
 
         _ropeHardTornDown = false;
-
-        // The body keeps its link but not its anchors: a dead pawn is no harness to hang
-        // the rope from. The partner's side still holds it.
-        if ((downed || !inGame) && RopeInterop.HasRopeTeamAnchors)
-            RopeInterop.ReleaseAllAnchors();
         return inGame && !downed;
     }
 
@@ -194,7 +180,6 @@ internal sealed class RopeCoupleController
         {
             _network.SendRopeClip(linkedPartner, false);
             RopeLinkState.Apply(self, linkedPartner, false);
-            RopeInterop.ReleaseAllAnchors();
             return;
         }
 
@@ -248,32 +233,10 @@ internal sealed class RopeCoupleController
         ModLog.Info($"[RopeCouple] Clip to player {bestId} at {bestDist:F1}m");
     }
 
-    private void TickRopeTeam()
-    {
-        int self = _network.LocalPlayerId;
-        int partner = RopeLinkState.PartnerOf(self);
-
-        if (partner < 0 || !_network.RemotePlayers.TryGetValue(partner, out var remote)
-            || remote == null || remote.State != PlayerState.InGame
-            || !RemotePlayerManager.TryGetGhostHarness(partner, out var partnerAnchor))
-        {
-            if (RopeInterop.HasRopeTeamAnchors) RopeInterop.ReleaseAllAnchors();
-            return;
-        }
-
-        if (!RopeInterop.UpdateRopeTeamAnchor(partner, partnerAnchor))
-        {
-            _network.SendRopeClip(partner, false);
-            RopeLinkState.Apply(self, partner, false);
-            RopeInterop.ReleaseAllAnchors();
-            ModLog.Warning("[RopeCouple] Rope attachment was refused; the link has been released.");
-        }
-    }
-
     internal void ClearLinks()
     {
         RopeLinkState.Clear();
-        RopeInterop.ReleaseAllAnchors();
+        RopeVisuals.Clear();
         _ropeHardTornDown = false;
     }
 

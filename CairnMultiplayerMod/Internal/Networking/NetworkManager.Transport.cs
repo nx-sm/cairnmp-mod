@@ -117,7 +117,6 @@ internal sealed partial class NetworkManager
                 _manifestHandledPeers.Remove(steamId);
             }
             _steamIdsByPlayerId.Remove(playerId);
-            RopeOrder.Forget(playerId);
             if (lobby.IsHost) _pitonAuthority?.RemovePlayer(playerId, KeepPitonsOfLeavers());
             if (_remotePlayers.Remove(playerId))
                 OnPlayerLeft?.Invoke(playerId);
@@ -317,7 +316,6 @@ internal sealed partial class NetworkManager
                 {
                     var playerId = EnsureSteamRemotePlayer(remoteSteamId);
                     _manifestHandledPeers.Add(remoteSteamId);
-                    RopeOrder.Forget(playerId);
                     _pitonAuthority?.RemovePlayer(playerId, KeepPitonsOfLeavers());
                     NotifyExtensionPeerLeft(playerId);
                     if (_remotePlayers.Remove(playerId))
@@ -471,30 +469,21 @@ internal sealed partial class NetworkManager
             new ClientRopeClip { TargetPlayerId = targetPlayerId, Clip = clip }, reliable: true);
     }
 
-    /// <summary>
-    /// Host only. A clip goes out leader first when the mode gives ropes a leader: every
-    /// client learns the order from the packet itself, and a latecomer from the snapshot.
-    /// </summary>
+    /// <summary>Host only: judges a rope request and tells everyone.</summary>
     private void CommitRopeClip(int requester, int target, bool clip)
     {
         if (!RopeRequests.IsAllowed(requester, target, clip, _ropeLinks(), IsAdmittedPlayer)) return;
-
-        int first = requester, second = target;
-        if (clip && LeadAndFollow())
+        if (clip && LeadAndFollow()
+            && !RopeOrder.WithinReach(PlayerPosition(requester), PlayerPosition(target)))
         {
-            if (!RopeOrder.TryOrder(requester, target, PlayerPosition(requester), PlayerPosition(target),
-                    out first, out second))
-            {
-                ModLog.Info($"[RopeCouple] Refused a rope between {requester} and {target}: too far apart");
-                return;
-            }
+            ModLog.Info($"[RopeCouple] Refused a rope between {requester} and {target}: too far apart");
+            return;
         }
         if (clip && !_ropeCreationBudget.Take(requester)) return;
-        if (clip) RopeOrder.Linked(first, second);
 
-        OnRopeClip?.Invoke(first, second, clip);
+        OnRopeClip?.Invoke(requester, target, clip);
         BroadcastSteamServerPacket(PacketId.ServerRopeClip,
-            new ServerRopeClip { FromPlayerId = first, TargetPlayerId = second, Clip = clip },
+            new ServerRopeClip { FromPlayerId = requester, TargetPlayerId = target, Clip = clip },
             exceptSteamId: 0, reliable: true);
     }
 
@@ -699,7 +688,6 @@ internal sealed partial class NetworkManager
     private void ResetSteamTransportState()
     {
         _ropeCreationBudget.Clear();
-        RopeOrder.Clear();
         ResetExtensionApi();
         CloseLobbyTransport();
         _steamTransportActive = false;

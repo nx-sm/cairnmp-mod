@@ -120,6 +120,36 @@ internal static class LifeInterop
         return true;
     }
 
+    /// <summary>
+    /// Starts the game's automatic rewind, the one that takes a climber back to the last
+    /// moment they could resume from. Assist mode is bypassed, as the game's own debug rewind
+    /// does, and "resurrection" brings a climber the fall killed back to life.
+    /// </summary>
+    internal static bool TryRewindFall(out string refusal)
+    {
+        refusal = null;
+        try
+        {
+            var rewind = UnityEngine.Object.FindObjectOfType<RewindController>();
+            if (rewind == null)
+            {
+                refusal = "the game has no rewind controller here";
+                return false;
+            }
+            if (rewind.StartRewindIfPossible(bypassAssistMode: true, automaticRewind: true, resurrection: true))
+                return true;
+
+            rewind.CanRewind(out var reason, bypassAssistMode: true);
+            refusal = "the game refused to rewind (" + reason + ")";
+            return false;
+        }
+        catch (Exception exception)
+        {
+            refusal = "the rewind failed: " + exception.Message;
+            return false;
+        }
+    }
+
     private static void ApplyReviveHealth(float healthRatio)
     {
         if (healthRatio >= 1f) return;

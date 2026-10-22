@@ -34,6 +34,13 @@ internal interface ILifeApi
     bool ReviveLocalPlayer(float healthRatio);
 
     /// <summary>
+    /// Puts the local climber back on the wall a moment before their fall, with the game's
+    /// own rewind — bringing them back to life if the fall killed them. The game picks the
+    /// moment itself, as it does for its automatic rewind. Returns why it refused, if it did.
+    /// </summary>
+    bool TryRewindFall(out string refusal);
+
+    /// <summary>
     /// Puts the game's own "revive" prompt back on downed teammates' ghosts. Cairn ships the
     /// prompt on the ghost prefab but wires it to its dead matchmaking service; this points
     /// it at our session instead. <paramref name="canRevive"/> is asked per player id.
@@ -72,6 +79,12 @@ internal sealed class UnavailableLifeApi : ILifeApi
     public void EndLocalPlayer() { }
 
     public bool ReviveLocalPlayer(float healthRatio) => false;
+
+    public bool TryRewindFall(out string refusal)
+    {
+        refusal = "the game's rewind is not available";
+        return false;
+    }
 
     public void ExhaustLocalPlayer(float amount) { }
 

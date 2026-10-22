@@ -13,7 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
-| [2.5.0](#250--2026-10-22-beta) | 2026-10-22 | Beta | Rope team without the Climbot: leader and last climber
+| [2.5.0](#250--2026-10-22-beta) | 2026-10-22 | Beta | Rope team without the Climbot: leader and last climber |
 | [2.4.0](#240--2026-10-22-beta) | 2026-10-22 | Beta | Direct-connect lobbies for GOG and Steam copies together |
 | [2.3.1](#231--2026-10-15-beta) | 2026-10-15 | Beta | Game modes, races and rescues that keep their word |
 | [2.3.0](#230--2026-09-18-beta) | 2026-09-18 | Beta | Game modes, downed climbers and a rebuilt panel |
@@ -39,6 +39,39 @@ All notable CairnMP changes are documented here. Releases follow
 | [1.1.0](#110--2026-08-02) | 2026-08-02 | Stable | Managed extension API and diagnostics |
 | [1.0.0](#100--2026-07-11) | 2026-07-11 | Stable | First stable release |
 | [0.1.37](#0137--2026-07-09-beta) | 2026-07-09 | Beta | Multiplayer save and piton fixes |
+
+---
+
+## [Unreleased]
+
+### Changed
+
+- The rope between two climbers is a drawn line every player sees, with no physics.
+  It no longer stretches off to infinity, and both climbers see the rope they share.
+- No more fixed roles: whoever is ahead leads, and anyone can place a piton or take
+  one out. Taking out a piton is now **P**, so it no longer also toggles the climb
+  trails.
+
+- A Rope team run has its own story save on every player's machine. The first launch
+  from a lobby starts it in a free slot; every later launch continues it automatically,
+  for the host and for each guest. Set `[CoopSave] Slot` in `MelonPreferences.cfg` to
+  pick the slot (0 = A), or to -1 to start a new run.
+
+### Fixed
+
+- Launching from a lobby no longer starts a new game over the save you meant to
+  continue. Cairn starts a new game in whichever slot is active.
+- A roped climber no longer dies from a slip with no visible fall. Cairn could not
+  hang a fall from another climber's harness, so it dropped the climber unsecured.
+  The rope now catches the fall by rewinding the climber to just before they came
+  off; if the game refuses to rewind, they go down and can be rescued as before.
+- The Multiplayer button on the main menu no longer reads "Story".
+- Controller shortcuts no longer open a game menu: Cairn's own View-button action
+  moves to the Menu button, leaving View to CairnMP's shortcuts
+  (`[Controller] FreeViewButton`).
+- The join field accepts **Ctrl+V** (or **Shift+Insert**) and **Ctrl+C**. Pasting a
+  whole message such as "join me: 100.64.1.2:27420" keeps only the address.
+- A piton refused by the game is now logged with the game's reason.
 
 ---
 

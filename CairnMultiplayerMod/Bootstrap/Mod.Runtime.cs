@@ -166,6 +166,7 @@ public partial class Mod
         // Arm controller shortcuts only after their modifier has already blocked Cairn for
         // one frame. This runs before inventory/features so every consumer sees one coherent
         // controller snapshot and secondary buttons cannot trigger both action sets.
+        ViewButtonRebind.Ensure(Internal.ModConfig.FreeViewButton.Value);
         ModControllerInput.Update();
         InputCaptureState.IsControllerShortcutCaptured = ModControllerInput.IsModifierHeld
             && (_multiplayerModeActive || SceneRoles.IsMainMenu(CurrentScene));

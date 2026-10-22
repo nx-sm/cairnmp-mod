@@ -250,9 +250,6 @@ internal sealed class PlayersAdapter : IPlayersApi
     }
 
     public bool ShakeLocalClimberGrip() => Roping.RopeShakeInterop.ShakeLocalClimber();
-
-    public void YieldRopeLead(int playerId) => _network()?.RopeOrder.YieldLead(playerId);
-
     public bool TryGetLocation(int playerId, out PlayerLocation location)
     {
         location = default;

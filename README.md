@@ -40,7 +40,7 @@ base URL for local testing with `CAIRNMP_API_URL`.
 
 | Area | Included functionality |
 | --- | --- |
-| Climbing | Roped climbing with a leader and a last climber, belay synchronization |
+| Climbing | Shared ropes drawn for everyone, with falls caught by the rope |
 | Players | Position, animation, cosmetics, lamps, hand and finger poses |
 | World | Weather, time of day, pitons, shared ground items, and world pings |
 | Communication | In-game chat, completion, host commands, and experimental proximity voice |
@@ -55,6 +55,12 @@ base URL for local testing with `CAIRNMP_API_URL`.
 CairnMP uses **View/Share/Create** as a modifier so its commands do not replace
 Cairn's normal controller layout. Hold the modifier first, then press the action
 button; Cairn's native actions are temporarily blocked while it is held.
+
+The button belongs to CairnMP alone: whatever Cairn itself does with View moves to
+the **Menu** button (☰) while the mod runs. On an Xbox Series controller, View is
+the small two-squares button on the left; the **Share** button in the middle
+records clips in Windows and is not used. Set `[Controller] FreeViewButton = false`
+in `UserData\MelonPreferences.cfg` to keep Cairn's own View binding.
 
 | Controller shortcut | Action |
 | --- | --- |
@@ -99,17 +105,23 @@ In the **Rope team** mode the climbers carry the gear: there is no Climbot.
 | Key | Action |
 | --- | --- |
 | `L` or `View/Share` + `Y/△` | Tie in to the climber within 3 m, or untie |
-| `T` or `View/Share` + D-pad `↓` | Take out the nearest piton and stow it |
+| `P` or `View/Share` + D-pad `↓` | Take out the nearest piton and stow it |
 
-- **Leader and last climber.** When two climbers tie in, the higher one leads. Only
-  the leader places pitons; the last climber takes them out with `T`. Climbing on
-  your own, you do both. Pass pitons back up to the leader with the give action.
-- **A fall never pulls your partner off.** The climber still on the wall holds it
-  like a piton that cannot fail: no shaken grip, no weight to carry.
-- **A death is not the end of the climb.** A downed climber can still be rescued
-  for 120 seconds. Otherwise they restart from the last checkpoint while the others
-  keep climbing. The pitons left on the wall stay there for them. Once they reach
-  the survivor, they tie in again with `L`, and the survivor leads.
+- **Everyone handles the pitons.** Whoever is ahead leads, and that changes as you
+  climb. Anyone can place a piton and anyone can take one out. Pass pitons to your
+  partner with the give action.
+- **The rope is drawn, not simulated.** Every player sees every rope as a line
+  between the two harnesses. Nothing pulls on anybody.
+- **The rope catches falls.** When a roped climber's fall would kill them while their
+  partner is still standing, the game rewinds them to just before they came off. If
+  the game cannot rewind, they go down and can be rescued for 120 seconds as usual.
+- **A death is not the end of the climb.** A climber whose death plays out restarts
+  from the last checkpoint while the others keep climbing. The pitons left on the
+  wall stay there for them, and they tie in again with `L` once they catch up.
+- **Every player keeps their own copy of the run.** The first launch from a lobby
+  starts it in a free story slot; later launches continue it automatically. Your
+  solo saves are never overwritten. The slot is `[CoopSave] Slot` in
+  `UserData\MelonPreferences.cfg` (0 = slot A); set it to `-1` to start a new run.
 
 ### Share items
 

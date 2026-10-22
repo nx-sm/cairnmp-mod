@@ -208,22 +208,20 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Fact]
-    public void CooperativeRopeSelectsNativeBelayButScopesPersonalPitonOperations()
+    public void TheSharedRopeIsDrawnNeverSimulated()
     {
-        var interop = File.ReadAllText(Path.Combine(
-            ProjectDirectory, "Internal", "Game", "Roping", "RopeInterop.Belay.cs"));
-        var patch = File.ReadAllText(Path.Combine(
-            ProjectDirectory, "Internal", "Game", "Roping", "RopeTeamFallPatch.cs"));
+        var visuals = File.ReadAllText(Path.Combine(
+            ProjectDirectory, "Internal", "Game", "Roping", "RopeVisuals.cs"));
+        var roping = Directory.GetFiles(Path.Combine(ProjectDirectory, "Internal", "Game", "Roping"), "*.cs")
+            .Select(File.ReadAllText).ToArray();
 
-        Assert.Contains("_lifeline.securingRope = _rope", interop, StringComparison.Ordinal);
-        Assert.Contains("_lifeline.securingRope = _personalRope", interop, StringComparison.Ordinal);
-        Assert.Contains("TryGetInitialLength", interop, StringComparison.Ordinal);
-        Assert.Contains("renderer.parts = _rope.ropeParts", interop, StringComparison.Ordinal);
-        Assert.Contains("SetHarnessVisual", interop, StringComparison.Ordinal);
-        Assert.Contains("RestoreHarnessVisual", interop, StringComparison.Ordinal);
-        Assert.Contains("MC_Outift_NoHarness", interop, StringComparison.Ordinal);
-        Assert.Contains("BeginPersonalRopeOperation", patch, StringComparison.Ordinal);
-        Assert.Contains("AfterPersonalOperation", patch, StringComparison.Ordinal);
+        // Every link on every screen, as a line between the two harnesses.
+        Assert.Contains("RopeLinkState.Links()", visuals, StringComparison.Ordinal);
+        Assert.Contains("LineRenderer", visuals, StringComparison.Ordinal);
+        // No physics rope between players: nothing attaches to a harness or takes over the
+        // climber's own lifeline any more.
+        Assert.DoesNotContain(roping, source => source.Contains(".AttachTo(", StringComparison.Ordinal));
+        Assert.DoesNotContain(roping, source => source.Contains("securingRope =", StringComparison.Ordinal));
     }
 
     [Fact]

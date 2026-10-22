@@ -336,10 +336,8 @@ internal static partial class RopeInterop
 
         try
         {
-            // The piton the climber is hanging from is not theirs to pull out from below.
-            if (lifeline.IsPitonCriticalForLifeline(closest))
-                return "That piton is holding your rope. Climb past it first.";
-
+            // The game reroutes the climber's own rope through the remaining pitons, as it does
+            // when one breaks: no piton is refused for carrying it.
             var itemId = closest.ItemId.value;
             if (!InventoryAdapter.HasRoomFor(itemId)) return "No room in your backpack for the piton.";
 

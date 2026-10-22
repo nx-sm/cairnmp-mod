@@ -237,6 +237,7 @@ internal sealed class FeatureBuilder
             => _own(_inner.HoldBackDeathScreen(keepHolding, onWentDown));
         public void EndLocalPlayer() => _inner.EndLocalPlayer();
         public bool ReviveLocalPlayer(float healthRatio) => _inner.ReviveLocalPlayer(healthRatio);
+        public bool TryRewindFall(out string refusal) => _inner.TryRewindFall(out refusal);
         public void ExhaustLocalPlayer(float amount) => _inner.ExhaustLocalPlayer(amount);
         public float FallenPartnerStaminaCost(float fallback) => _inner.FallenPartnerStaminaCost(fallback);
         public IGameRegistration AddRevivePrompt(Func<int, bool> canRevive, Action<int> onRevive)

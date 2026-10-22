@@ -62,7 +62,8 @@ their public IP instead.
 - **Host:** Multiplayer → Host → set visibility to **Direct IP** → create. The
   lobby code shows the address to share, such as `100.101.102.103:27420`. Use the
   copy button and send it to your friend.
-- **Guest:** Multiplayer → Join → paste the address into the code field → Join.
+- **Guest:** Multiplayer → Join → click the code field, paste the address with
+  **Ctrl+V** → Join. Pasting a whole chat message keeps only the address.
   Any code containing `.` or `:` is treated as an address.
 
 On a GOG copy, Steam cannot start for Cairn, so hosting always uses Direct IP

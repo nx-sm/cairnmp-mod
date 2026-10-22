@@ -72,8 +72,6 @@ internal static unsafe class TeleportInterop
             return false;
         }
 
-        Roping.RopeInterop.ReleaseAllAnchors();
-
         if (TryTeleportAcrossZones(position, yawDeg))
             return true;
 

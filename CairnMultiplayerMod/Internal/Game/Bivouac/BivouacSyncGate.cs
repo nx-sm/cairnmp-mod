@@ -167,11 +167,10 @@ internal sealed class BivouacSyncGate
         _resetSyncTimers();
         WeatherInterop.ResetRemoteState();
         RemotePlayerManager.ClearAll();
-        // Release the native rope-team anchors: ClearAll destroys the ghosts, so a rope
-        // left pinned to their harness would point into the void. We KEEP the logical link
-        // (RopeLinkState) — it'll be re-anchored on exit when the partner's ghost returns.
-        // The rope tick doesn't run during a bivouac, hence this release here.
-        RopeInterop.ReleaseAllAnchors();
+        // ClearAll destroys the ghosts, so a drawn rope would keep pointing at where they
+        // stood. The logical link (RopeLinkState) stays: the rope is drawn again once the
+        // partner's ghost returns. The rope tick doesn't run during a bivouac, hence this here.
+        RopeVisuals.HideAll();
         _setLocalState(PlayerState.Loading);
         // Remember the pawn's position on entry: used by the anti-lockup guard
         // (a pawn that has moved = we're climbing again).

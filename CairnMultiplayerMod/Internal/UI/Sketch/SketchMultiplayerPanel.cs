@@ -737,7 +737,36 @@ internal sealed class SketchMultiplayerPanel : IMultiplayerPanel
 
         if (_current != Screen.Join || _codeInput == null || !_codeInput.isFocused) return;
         if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame)
+        {
             OnJoinClicked();
+            return;
+        }
+
+        // The game's input setup keeps the field from seeing Ctrl+V on its own, so the panel
+        // handles the clipboard itself. A paste replaces the field: it holds one address.
+        var ctrl = keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed;
+        var shift = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed;
+        if ((ctrl && keyboard.vKey.wasPressedThisFrame) || (shift && keyboard.insertKey.wasPressedThisFrame))
+            PasteCode();
+        else if (ctrl && (keyboard.cKey.wasPressedThisFrame || keyboard.insertKey.wasPressedThisFrame))
+            CopyCodeField();
+    }
+
+    private void PasteCode()
+    {
+        var pasted = JoinCodeText.FromClipboard(GUIUtility.systemCopyBuffer, _codeInput.characterLimit);
+        if (pasted.Length == 0) return;
+        _codeInput.text = pasted;
+        _codeInput.caretPosition = pasted.Length;
+        _codeInput.selectionAnchorPosition = pasted.Length;
+        _codeInput.selectionFocusPosition = pasted.Length;
+        UpdateInteractable();
+    }
+
+    private void CopyCodeField()
+    {
+        var text = _codeInput.text?.Trim();
+        if (!string.IsNullOrEmpty(text)) GUIUtility.systemCopyBuffer = text;
     }
 
     /// <summary>A search that says nothing for two seconds reads as a panel that has hung.</summary>

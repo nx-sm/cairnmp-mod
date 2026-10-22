@@ -184,7 +184,13 @@ public partial class Mod : MelonMod
         Player = new PlayerStateBroadcaster(
             Network, _runtimeState, Rope.Reset, () => Bivouac?.BlocksGameplaySync() == true,
             isSpeaking: playerId => _voice?.IsSpeaking(playerId) == true);
-        StartGame = new StartGameFlow(_panel, _mainMenu.RestoreMainMenuInput, _runtimeState);
+        StartGame = new StartGameFlow(_panel, _mainMenu.RestoreMainMenuInput, _runtimeState,
+            coopSlot: () => ModConfig.CoopSaveSlot.Value,
+            rememberCoopSlot: slot =>
+            {
+                ModConfig.CoopSaveSlot.Value = slot;
+                MelonPreferences.Save();
+            });
         Bivouac = new BivouacSyncGate(
             Network, _panel, _runtimeState, ResetSyncTimers, ResetSceneBoundSyncState, SetLocalState);
     }

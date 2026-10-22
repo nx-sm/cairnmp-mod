@@ -7,22 +7,15 @@ namespace CairnMultiplayerMod.Internal.Game.Roping;
 
 /// <summary>
 /// Applies <see cref="PitonPlacementRule"/> to the game's two checks before a piton goes in:
-/// the climbing module's and the piton item's. The game's refusal message follows the reason
-/// it is handed, so a follower hears the game's own "not the rope head" answer.
+/// the climbing module's and the piton item's.
 /// </summary>
 internal static class PitonRulesPatch
 {
     private static readonly HarmonyLib.Harmony Harmony = new("CairnMultiplayerMod.PitonRules");
     private static bool _installed;
-    private static bool _withoutClimbot;
-    private static bool _follower;
 
     /// <summary>Set every frame by the rope controller.</summary>
-    internal static void Update(bool withoutClimbot, bool follower)
-    {
-        _withoutClimbot = withoutClimbot;
-        _follower = follower;
-    }
+    internal static bool WithoutClimbot { get; set; }
 
     public static void Install()
     {
@@ -49,8 +42,7 @@ internal static class PitonRulesPatch
     {
         Harmony.UnpatchSelf();
         _installed = false;
-        _withoutClimbot = false;
-        _follower = false;
+        WithoutClimbot = false;
     }
 
     private static void AfterCanAddPiton(
@@ -64,15 +56,29 @@ internal static class PitonRulesPatch
     private static void Apply(
         ref ClimbingV2PawnControllerModulePitonExecution.PitonUnusabilityReason reason, ref bool allowed)
     {
-        if (!_withoutClimbot && !_follower) return;
+        if (!WithoutClimbot) return;
         try
         {
-            allowed = PitonPlacementRule.Decide(allowed, (int)reason, _withoutClimbot, _follower, out var adjusted);
+            allowed = PitonPlacementRule.Decide(allowed, (int)reason, WithoutClimbot, out var adjusted);
             reason = (ClimbingV2PawnControllerModulePitonExecution.PitonUnusabilityReason)adjusted;
+            ReportRefusal(allowed, adjusted);
         }
         catch (Exception exception)
         {
             ModLog.SuppressedException("rope.piton-rules", exception);
         }
+    }
+
+    private static int _lastReportedRefusal = -1;
+
+    /// <summary>The game asks every frame; only a new reason is worth a log line.</summary>
+    private static void ReportRefusal(bool allowed, int reasons)
+    {
+        var current = allowed ? PitonPlacementRule.Usable : reasons;
+        if (current == _lastReportedRefusal) return;
+        _lastReportedRefusal = current;
+        if (!allowed)
+            ModLog.Info("[PitonRules] The game refuses a piton: "
+                + (ClimbingV2PawnControllerModulePitonExecution.PitonUnusabilityReason)reasons);
     }
 }

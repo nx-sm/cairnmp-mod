@@ -149,9 +149,7 @@ internal sealed class UnavailableGameApi : IGameApi
         public void ResetHandPoseCaches() { }
         public bool IsLocalPlayerFalling => false;
         public bool IsRopedToLocalPlayer(int playerId) => false;
-        public bool ShakeLocalClimberGrip() => false;
-        public void YieldRopeLead(int playerId) { }
-        public void ResetAppearanceCaches() { }
+        public bool ShakeLocalClimberGrip() => false;        public void ResetAppearanceCaches() { }
     }
 
     private sealed class UnavailableWeatherApi : IWeatherApi

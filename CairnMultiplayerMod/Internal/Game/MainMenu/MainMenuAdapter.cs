@@ -323,6 +323,12 @@ internal sealed class MainMenuAdapter : IMainMenuApi, IDisposable
                 throw new InvalidOperationException("The cloned Story button has no label or Button component.");
             }
 
+            // The clone carries the Story button's localisation, which writes its translated
+            // "Story" back over our label whenever the menu is localised or refreshed — and the
+            // menu then caches that text for its hover animation.
+            foreach (var localized in clone.GetComponentsInChildren<Il2Cpp.LocalizedText>(true))
+                if (localized != null) UnityEngine.Object.DestroyImmediate(localized);
+
             label.text = Label;
             button.onClick.RemoveAllListeners();
             button.onClick.AddListener((UnityAction)(() => _owner?.OnButtonClicked(this)));

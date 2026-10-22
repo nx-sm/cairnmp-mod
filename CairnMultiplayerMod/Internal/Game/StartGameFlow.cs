@@ -24,21 +24,35 @@ internal sealed class StartGameFlow
     // until loading begins.
     private ServerStartGame? _forceNewGameOpts;
 
+    /// <summary>How long the save screen may take to open before the choice is left to the player.</summary>
+    private const float CoopSaveTimeoutSeconds = 10f;
+
+    private readonly Func<int> _coopSlot;
+    private readonly Action<int> _rememberCoopSlot;
+    private bool _coopSavePending;
+    private float _coopSaveWaited;
+
     // Always enter through Cairn's save manager so players can resume an existing save.
     // Choosing an empty slot continues through the native new-game/difficulty flow, where
     // Free Roam is already made available by FreeRoamUnlockPatch.
     internal static MainMenuInterop.MainMenuStep MultiplayerLaunchEntryStep =>
         MainMenuInterop.MainMenuStep.StoryModeManageSave;
 
+    /// <param name="coopSlot">The story slot this machine's rope-team run lives in, or -1.</param>
+    /// <param name="rememberCoopSlot">Stores the slot a new rope-team run was started in.</param>
     internal StartGameFlow(
         IMultiplayerPanel panel,
         Action restoreMainMenuInput,
-        RuntimeState state)
+        RuntimeState state,
+        Func<int> coopSlot = null,
+        Action<int> rememberCoopSlot = null)
     {
         _panel = panel ?? throw new ArgumentNullException(nameof(panel));
         _restoreMainMenuInput = restoreMainMenuInput
             ?? throw new ArgumentNullException(nameof(restoreMainMenuInput));
         _state = state ?? throw new ArgumentNullException(nameof(state));
+        _coopSlot = coopSlot ?? (() => -1);
+        _rememberCoopSlot = rememberCoopSlot ?? (_ => { });
     }
 
     internal bool HasPending => _pendingStart.HasValue;
@@ -52,6 +66,7 @@ internal sealed class StartGameFlow
         _forceNewGameOpts = null;
         _pendingStartRetries = 0;
         _pendingStartRetryTimer = 0f;
+        _coopSavePending = false;
     }
 
     internal void Begin(ServerStartGame pkt)
@@ -122,8 +137,52 @@ internal sealed class StartGameFlow
                 _pendingStart = null;
                 _pendingStartRetries = 0;
                 _pendingStartRetryTimer = 0f;
+                _coopSavePending = rules.LeadAndFollow;
+                _coopSaveWaited = 0f;
                 _panel.Hide();
             }
+        }
+
+        TickCoopSave(currentScene);
+    }
+
+    /// <summary>
+    /// A rope team continues its own run: once the save screen is up, the remembered slot is
+    /// loaded, or a new game is started in a free one. Anything that does not work out leaves
+    /// the screen to the player, exactly as before.
+    /// </summary>
+    private void TickCoopSave(string currentScene)
+    {
+        if (!_coopSavePending) return;
+        if (!SceneRoles.IsMainMenuArea(currentScene))
+        {
+            _coopSavePending = false;
+            return;
+        }
+
+        _coopSaveWaited += Time.unscaledDeltaTime;
+        if (_coopSaveWaited > CoopSaveTimeoutSeconds)
+        {
+            _coopSavePending = false;
+            ModLog.Warning("[CoopSave] The save screen never became ready; choose a save yourself.");
+            return;
+        }
+        if (!CoopSaveInterop.TryGetReadySaveScreen(out var screen)) return;
+
+        _coopSavePending = false;
+        var plan = CoopSavePlan.Decide(_coopSlot(), CoopSaveInterop.HasSave, CoopSaveInterop.FindFreeSlot());
+        switch (plan.Action)
+        {
+            case CoopSaveAction.Resume:
+                CoopSaveInterop.Resume(screen, plan.Slot);
+                break;
+            case CoopSaveAction.NewGame:
+                if (CoopSaveInterop.StartNewGame(screen, plan.Slot)) _rememberCoopSlot(plan.Slot);
+                break;
+            default:
+                _panel.SetStatus("Every story slot holds a save: pick one for the rope team.", true);
+                ModLog.Warning("[CoopSave] No free story slot; leaving the choice to the player.");
+                break;
         }
     }
 }

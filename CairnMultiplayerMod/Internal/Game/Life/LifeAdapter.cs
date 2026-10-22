@@ -31,6 +31,7 @@ internal sealed class LifeAdapter : ILifeApi
     }
 
     public bool ReviveLocalPlayer(float healthRatio) => LifeInterop.Revive(healthRatio);
+    public bool TryRewindFall(out string refusal) => LifeInterop.TryRewindFall(out refusal);
 
     public void ExhaustLocalPlayer(float amount) => LifeInterop.Exhaust(amount);
 

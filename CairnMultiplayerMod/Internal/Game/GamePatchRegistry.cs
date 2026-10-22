@@ -29,7 +29,6 @@ internal static class GamePatchRegistry
     {
         new("netplay frame", NetplaySetFramePatch.Install, NetplaySetFramePatch.Uninstall),
         new("bivouac safety", BivouacDiagnostics.Install, BivouacDiagnostics.Uninstall),
-        new("direct rope team", RopeTeamFallPatch.Install, RopeTeamFallPatch.Uninstall),
         new("piton rules", PitonRulesPatch.Install, PitonRulesPatch.Uninstall),
         new("lobby constraints", GameSetupConstraintsPatch.Install, GameSetupConstraintsPatch.Uninstall),
         new("multiplayer pause", MultiplayerPausePatch.Install, MultiplayerPausePatch.Uninstall),

@@ -35,6 +35,12 @@ internal sealed class ReviveFeature : MultiplayerFeature
     /// move anyone who is not. Keep trying for a few seconds, then let them walk down.</summary>
     private const float RecallTeleportWindowSeconds = 5f;
 
+    /// <summary>A death this soon after the climber was last falling is the fall's doing.</summary>
+    private const float FallCatchWindowSeconds = 3f;
+
+    /// <summary>How long the game's rewind has to bring a caught climber back.</summary>
+    private const float FallCatchSeconds = 8f;
+
     /// <summary>Used only when the game's own netplay tweakables are not loaded yet.</summary>
     private const float FallbackFallenPartnerCost = 1.5f;
 
@@ -68,6 +74,9 @@ internal sealed class ReviveFeature : MultiplayerFeature
     private WorldPosition _pendingRecall;
     private float _pendingRecallUntil;
     private bool _recallPromptShown;
+    private float _lastFallingAt = float.NegativeInfinity;
+    private bool _catchingFall;
+    private float _catchUntil;
 
     public override string Id => "revive";
 
@@ -104,8 +113,31 @@ internal sealed class ReviveFeature : MultiplayerFeature
     /// </summary>
     private bool DecideOnDeath()
     {
+        // The rope holds a fall like a piton that cannot fail: the death is held back while
+        // the game rewinds the climber to before they came off.
+        if (RopeCanCatchThisDeath())
+        {
+            _catchingFall = true;
+            return true;
+        }
         if (SomebodyCanStillHelp()) return true;
         if (IsConnected) MarkOut();
+        return false;
+    }
+
+    /// <summary>
+    /// A death the rope can undo: in a rope team, the climber was just falling, and the
+    /// partner on the other end is still standing. Any other death — the cold, an injury long
+    /// after the fall — is not the rope's to catch.
+    /// </summary>
+    private bool RopeCanCatchThisDeath()
+    {
+        if (!Rules.LeadAndFollow || !IsConnected) return false;
+        if (Game.Time.UnscaledTime - _lastFallingAt > FallCatchWindowSeconds) return false;
+        foreach (var playerId in Game.Players.RemotePlayersInGame)
+            if (Game.Players.IsRopedToLocalPlayer(playerId)
+                && !_downedPlayers.Contains(playerId) && !_outPlayers.Contains(playerId))
+                return true;
         return false;
     }
 
@@ -137,6 +169,41 @@ internal sealed class ReviveFeature : MultiplayerFeature
 
     private void OnLocalWentDown()
     {
+        if (_catchingFall)
+        {
+            if (Game.Life.TryRewindFall(out var refusal))
+            {
+                _catchUntil = Game.Time.UnscaledTime + FallCatchSeconds;
+                LogInfo("The rope caught a fall: rewinding to before it");
+                return;
+            }
+            _catchingFall = false;
+            LogInfo($"The rope could not catch the fall: {refusal}");
+        }
+        GoDown();
+    }
+
+    /// <summary>
+    /// Waits for the rewind to bring the climber back. A rewind that never does turns into an
+    /// ordinary downed climber, so a partner can still come for them.
+    /// </summary>
+    private void TickFallCatch()
+    {
+        if (!Game.Life.IsLocalPlayerDown)
+        {
+            _catchingFall = false;
+            Game.Hud.ShowMessage("notice", "Your rope held. Back where you came off.", NoticeSeconds);
+            return;
+        }
+        if (Game.Time.UnscaledTime < _catchUntil) return;
+
+        _catchingFall = false;
+        LogWarning("The rewind did not bring us back; waiting for a teammate instead.");
+        GoDown();
+    }
+
+    private void GoDown()
+    {
         _isDown = true;
         _isOut = false;
         _downedUntil = Game.Time.UnscaledTime + DownedSeconds;
@@ -147,6 +214,13 @@ internal sealed class ReviveFeature : MultiplayerFeature
 
     private void Tick()
     {
+        if (Game.Players.IsLocalPlayerFalling) _lastFallingAt = Game.Time.UnscaledTime;
+        if (_catchingFall)
+        {
+            TickFallCatch();
+            return;
+        }
+
         TickPendingRecall();
         TickRescuesUnderway();
 
@@ -221,17 +295,7 @@ internal sealed class ReviveFeature : MultiplayerFeature
     {
         _isOut = true;
         _sceneResetSinceOut = false;
-        if (IsHost) YieldLeadIfRoped(LocalPlayerId);
         Report(ClimberCondition.Out);
-    }
-
-    /// <summary>
-    /// Host only. A climber whose death played out comes back from the last checkpoint, below
-    /// the one who survived: when the two tie in again, the survivor leads.
-    /// </summary>
-    private void YieldLeadIfRoped(int playerId)
-    {
-        if (Rules.LeadAndFollow) Game.Players.YieldRopeLead(playerId);
     }
 
     /// <summary>
@@ -491,7 +555,6 @@ internal sealed class ReviveFeature : MultiplayerFeature
 
     private void OnConditionChanged(int playerId, DownedChanged message)
     {
-        if (IsHost && message.Condition == ClimberCondition.Out) YieldLeadIfRoped(playerId);
         if (playerId == LocalPlayerId) return;
         _rescuesUnderway.Remove(playerId);
 
@@ -534,7 +597,9 @@ internal sealed class ReviveFeature : MultiplayerFeature
         // The session was the only thing holding the death screen back. With it gone nobody
         // can come, so a climber still down plays the death out — otherwise they are left in
         // a dead body with no menu to restart from.
-        var wasDown = _isDown;
+        var wasDown = _isDown || (_catchingFall && Game.Life.IsLocalPlayerDown);
+        _catchingFall = false;
+        _lastFallingAt = float.NegativeInfinity;
         _downedPlayers.Clear();
         _outPlayers.Clear();
         _rescuesUnderway.Clear();

@@ -19,6 +19,10 @@ internal static class ModConfig
     public static MelonPreferences_Entry<string> DirectPassword;
     public static MelonPreferences_Entry<int> DirectReconnectSeconds;
 
+    public static MelonPreferences_Entry<int> CoopSaveSlot;
+
+    public static MelonPreferences_Entry<bool> FreeViewButton;
+
     public static MelonPreferences_Entry<string> ConnectKey;
     public static MelonPreferences_Entry<string> DisconnectKey;
 
@@ -44,6 +48,16 @@ internal static class ModConfig
         DirectPassword = direct.CreateEntry("Password", "");
         // A connection lost without a goodbye: guests redial, hosts keep the seat, this long.
         DirectReconnectSeconds = direct.CreateEntry("ReconnectSeconds", 300);
+
+        // The story slot this machine's rope-team run lives in, so every launch from a lobby
+        // continues it. -1: none yet — the next launch starts one in a free slot.
+        var coop = MelonPreferences.CreateCategory("CoopSave");
+        CoopSaveSlot = coop.CreateEntry("Slot", -1);
+
+        // Moves the game's own View-button actions to the Menu button, so View + button
+        // shortcuts no longer open a game menu too. false: leave the game's bindings alone.
+        var controller = MelonPreferences.CreateCategory("Controller");
+        FreeViewButton = controller.CreateEntry("FreeViewButton", true);
 
         var keybinds = MelonPreferences.CreateCategory(CategoryKeybinds);
         ConnectKey = keybinds.CreateEntry("ConnectKey", "F5");
