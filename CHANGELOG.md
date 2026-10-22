@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.5.3](#253--2026-10-22-beta) | 2026-10-22 | Beta | Partner holds falls, saves read from disk, no View freeze |
 | [2.5.2](#252--2026-10-22-beta) | 2026-10-22 | Beta | Co-op saves resume their run; View no longer pauses |
 | [2.5.1](#251--2026-10-22-beta) | 2026-10-22 | Beta | Shared drawn rope, falls caught by rewind, co-op saves |
 | [2.5.0](#250--2026-10-22-beta) | 2026-10-22 | Beta | Rope team without the Climbot: leader and last climber |
@@ -44,7 +45,10 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
-## [Unreleased]
+## [2.5.3] — 2026-10-22 (beta)
+
+> This beta uses protocol **16**, like 2.5.2, but every player in a lobby must run
+> CairnMP 2.5.3: clearing trail marks is a new request the host has to know.
 
 ### Fixed
 
