@@ -82,6 +82,26 @@ public class GameModeTests
     }
 
     [Fact]
+    public void RopeTeamClimbsWithoutTheClimbotLeaderFirst()
+    {
+        var rules = MultiplayerModes.RopeTeam;
+
+        Assert.True(rules.LeadAndFollow);
+        Assert.True(rules.ExtraConstraints.HasFlag(ClimbConstraints.NoClimbot));
+        // A death sends the climber back to the last checkpoint, whatever the difficulty
+        // would otherwise do: never permadeath here.
+        Assert.False(rules.ExtraConstraints.HasFlag(ClimbConstraints.PermaDeath));
+        Assert.Contains("Back from the last checkpoint", MultiplayerModeText.Promises(rules));
+    }
+
+    [Fact]
+    public void OnlyTheRopeTeamLeadsAndFollows()
+    {
+        Assert.False(MultiplayerModes.FreeSolo.LeadAndFollow);
+        Assert.False(MultiplayerModes.Race.LeadAndFollow);
+    }
+
+    [Fact]
     public void RopeTeamPromisesBothWaysHome()
     {
         var promises = MultiplayerModeText.Promises(MultiplayerModes.RopeTeam);

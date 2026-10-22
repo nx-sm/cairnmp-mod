@@ -12,6 +12,9 @@ namespace CairnMultiplayerMod.Features;
 /// them lose every hold they were merely holding -- the game even has a drop cause named
 /// SharedRope for it. A firm hold rides it out, which is what makes the rope a decision
 /// rather than a decoration.
+///
+/// A mode where the partner holds a fall like a piton that cannot fail turns this off: the
+/// climber left on the wall is the anchor, not a second casualty.
 /// </summary>
 internal sealed class RopeShakeFeature : MultiplayerFeature
 {
@@ -37,11 +40,12 @@ internal sealed class RopeShakeFeature : MultiplayerFeature
         _wasFalling = falling;
         // Only the moment of coming off the wall travels; a long fall is one shake, not one
         // per frame.
-        if (falling) _fell.Send(new PartnerFell());
+        if (falling && !Rules.LeadAndFollow) _fell.Send(new PartnerFell());
     }
 
     private void OnPartnerFell(int fromPlayerId, PartnerFell message)
     {
+        if (Rules.LeadAndFollow) return;
         if (!Game.Players.IsRopedToLocalPlayer(fromPlayerId)) return;
         if (Game.Players.ShakeLocalClimberGrip())
             LogInfo($"Shaken off the wall by player {fromPlayerId}'s fall");

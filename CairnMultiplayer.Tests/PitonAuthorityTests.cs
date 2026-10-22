@@ -48,6 +48,35 @@ public sealed class PitonAuthorityTests
     }
 
     [Fact]
+    public void ARopeTeamLeaversPitonsStayOnTheWallForTheOthers()
+    {
+        var sink = new RecordingSink();
+        var removed = 0;
+        var authority = new PitonAuthority(sink, _ => { }, _ => removed++);
+        PlaceFromClient(authority, 10, 1);
+        var authId = Assert.IsType<ServerPitonPlaced>(sink.Broadcasts[0].Packet).PitonId;
+
+        authority.RemovePlayer(10, keepPitons: true);
+
+        Assert.Equal(0, removed);
+        sink.Sends.Clear();
+        authority.SendSnapshotTo(20);
+        Assert.Single(sink.Sends);
+
+        // Coming back under the same id and counting from 1 again places a new piton.
+        sink.Broadcasts.Clear();
+        PlaceFromClient(authority, 10, 1);
+        Assert.Single(sink.Broadcasts);
+
+        // The one left behind can still be taken out, and nobody is told it was theirs.
+        sink.Broadcasts.Clear();
+        sink.Sends.Clear();
+        Send(authority, 20, PacketId.ClientPitonRecovered, new ClientPitonRecovered { PitonId = authId });
+        Assert.Equal(authId, Assert.IsType<ServerPitonRemoved>(Assert.Single(sink.Broadcasts).Packet).PitonId);
+        Assert.Empty(sink.Sends);
+    }
+
+    [Fact]
     public void UniqueIdFloodIsRateLimitedBeforeNativeSpawn()
     {
         var sink = new RecordingSink();

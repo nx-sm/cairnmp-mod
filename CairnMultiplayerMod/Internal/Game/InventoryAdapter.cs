@@ -15,8 +15,8 @@ namespace CairnMultiplayerMod.Internal.Game;
 
 /// <summary>
 /// Narrow bridge to Cairn's inventory. Only ordinary consumables without per-unit state or
-/// contained items are eligible. This keeps quest progression, equipment durability,
-/// containers and unique collectibles out of the multiplayer transfer protocol.
+/// contained items, and pitons, are eligible. This keeps quest progression, containers and
+/// unique collectibles out of the multiplayer transfer protocol.
 /// </summary>
 internal sealed class InventoryAdapter : IInventoryApi
 {
@@ -515,8 +515,57 @@ internal sealed class InventoryAdapter : IInventoryApi
     private static bool IsShareable(InventoryItemData data)
         => data != null && data.containedItemId.value == 0 && IsShareable(data.InventoryItem);
 
+    /// <summary>
+    /// Ordinary consumables, and pitons: the last climber on a rope takes the pitons out, so
+    /// they have to be able to hand them back up to the leader. Every climbing-gear item in
+    /// Cairn is a piton. A piton passed over arrives as a fresh one — its wear is not carried.
+    /// </summary>
     private static bool IsShareable(InventoryItem item)
-        => item != null && item.Type == InventoryItemType.Consumable && !item.NeedsExtraData;
+        => item != null && (item.Type == InventoryItemType.Consumable && !item.NeedsExtraData
+                            || item.Type == InventoryItemType.ClimbingGear);
+
+    /// <summary>How many of that item the bag holds, every stack together.</summary>
+    internal static int CountInBag(int definitionId)
+    {
+        var total = 0;
+        try
+        {
+            var bag = InventoryManager.Instance?.BagInventoryData;
+            if (bag == null) return 0;
+            for (var index = 0; index < bag.Count; index++)
+            {
+                var data = bag.GetBagItemData(index)?.ItemData;
+                if (data != null && data.itemId.value == definitionId) total += Math.Max(0, data.Count);
+            }
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("inventory.count-in-bag", exception);
+        }
+        return total;
+    }
+
+    /// <summary>True when one more of that item fits in the bag.</summary>
+    internal static bool HasRoomFor(int definitionId)
+    {
+        try { return InventoryManager.Instance?.CanPutItemParts(NewRequest(definitionId, 1)) == true; }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("inventory.has-room", exception);
+            return false;
+        }
+    }
+
+    /// <summary>Puts one of that item in the bag, outside any transfer.</summary>
+    internal static bool TryStoreOne(int definitionId)
+    {
+        try { return InventoryManager.Instance?.PutItemParts(NewRequest(definitionId, 1)).CompleteSuccess == true; }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("inventory.store-one", exception);
+            return false;
+        }
+    }
 
     private static string ValidateRequest(int definitionId, int count)
     {

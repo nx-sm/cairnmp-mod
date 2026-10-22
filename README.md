@@ -34,13 +34,13 @@ base URL for local testing with `CAIRNMP_API_URL`.
 
 > [!IMPORTANT]
 > Every player in a lobby must use a compatible CairnMP build. The current wire
-> protocol is **15**; lobby admission may also require the exact mod version.
+> protocol is **16**; lobby admission may also require the exact mod version.
 
 ## Features
 
 | Area | Included functionality |
 | --- | --- |
-| Climbing | Roped climbing and belay synchronization |
+| Climbing | Roped climbing with a leader and a last climber, belay synchronization |
 | Players | Position, animation, cosmetics, lamps, hand and finger poses |
 | World | Weather, time of day, pitons, shared ground items, and world pings |
 | Communication | In-game chat, completion, host commands, and experimental proximity voice |
@@ -65,6 +65,7 @@ button; Cairn's native actions are temporarily blocked while it is held.
 | `View/Share` + `B/○` | Drop the selected backpack item |
 | `View/Share` + D-pad `←` / `→` | Select a shared ground item |
 | `View/Share` + D-pad `↑` | Show or hide player names |
+| `View/Share` + D-pad `↓` | Take out the nearest piton (Rope team) |
 | `View/Share` + `RB/R1` | Place a multiplayer ping |
 | Hold `View/Share` + `LB/L1` | Push to talk |
 | `View/Share` + right-stick click | Emergency input release |
@@ -91,9 +92,28 @@ Run `/help` for the complete command list.
 Feature-provided commands participate automatically when their usage string marks
 an argument as `<player>`.
 
+### Climb as a rope team
+
+In the **Rope team** mode the climbers carry the gear: there is no Climbot.
+
+| Key | Action |
+| --- | --- |
+| `L` or `View/Share` + `Y/△` | Tie in to the climber within 3 m, or untie |
+| `T` or `View/Share` + D-pad `↓` | Take out the nearest piton and stow it |
+
+- **Leader and last climber.** When two climbers tie in, the higher one leads. Only
+  the leader places pitons; the last climber takes them out with `T`. Climbing on
+  your own, you do both. Pass pitons back up to the leader with the give action.
+- **A fall never pulls your partner off.** The climber still on the wall holds it
+  like a piton that cannot fail: no shaken grip, no weight to carry.
+- **A death is not the end of the climb.** A downed climber can still be rescued
+  for 120 seconds. Otherwise they restart from the last checkpoint while the others
+  keep climbing. The pitons left on the wall stay there for them. Once they reach
+  the survivor, they tie in again with `L`, and the survivor leads.
+
 ### Share items
 
-Select an ordinary consumable in Cairn’s backpack. The native action bar adds:
+Select an ordinary consumable or a piton in Cairn’s backpack. The native action bar adds:
 
 - **`G` or `View/Share + X/□` — Give nearest:** transfer one unit to the nearest eligible player;
 - **`X` or `View/Share + B/○` — Drop:** place one unit into the shared world.

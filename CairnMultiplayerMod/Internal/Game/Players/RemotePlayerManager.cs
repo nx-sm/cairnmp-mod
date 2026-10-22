@@ -38,6 +38,7 @@ internal static class RemotePlayerManager
         public bool RootPoseFallbackLogged;
 
         public bool ClimbotLerpApplied;
+        public bool ClimbotShown;
 
         public int LastAppliedLampMode;
         public bool HasAppliedLampState;
@@ -336,6 +337,13 @@ internal static class RemotePlayerManager
 
                 if (rp.HasClimbotFrame)
                 {
+                    // Shown only once its owner actually has one: a session played without the
+                    // Climbot would otherwise leave a robot frozen in its default pose.
+                    if (!entry.ClimbotShown)
+                    {
+                        SetChildActive(entry.Root, "NetplayClimbot");
+                        entry.ClimbotShown = true;
+                    }
                     NetplayAnimationInterop.CallNetplayClimbotSetFrame(entry.NrpComponent, rp.Id, rp.ClimbotFrame);
 
                     // Enable the climbot's native interpolation once it exists (created on
@@ -761,20 +769,21 @@ internal static class RemotePlayerManager
     {
         if (root == null) return;
         SetChildActive(root, "Visual");
-        SetChildActive(root, "NetplayClimbot");
+        // Shown on the first climbot frame instead: see UpdateAll.
+        SetChildActive(root, "NetplayClimbot", false);
     }
 
-    private static void SetChildActive(GameObject root, string childName)
+    private static void SetChildActive(GameObject root, string childName, bool active = true)
     {
         try
         {
             var child = root.transform.Find(childName);
-            if (child != null)
-                child.gameObject.SetActive(true);
+            if (child != null && child.gameObject.activeSelf != active)
+                child.gameObject.SetActive(active);
         }
         catch (Exception ex)
         {
-            ModLog.Warning($"[Ghost] Could not activate child '{childName}': {ex.Message}");
+            ModLog.Warning($"[Ghost] Could not {(active ? "activate" : "hide")} child '{childName}': {ex.Message}");
         }
     }
 

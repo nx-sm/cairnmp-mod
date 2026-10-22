@@ -107,6 +107,7 @@ internal static partial class RopeInterop
 
             foreach (var pointer in actions.Detach) DetachWhenAllowed(pointer);
             foreach (var placed in actions.Spawn) SpawnRemotePiton(lifeline, placed, now);
+            foreach (var own in actions.Restore) RestoreOwnPiton(lifeline, own);
             foreach (var (localId, pointer) in actions.Announce) AnnounceLocalPiton(network, localId, pointer);
             foreach (var localId in actions.Removed) network.SendPitonRemoved(localId);
             foreach (var pitonId in actions.Recovered)
@@ -180,6 +181,20 @@ internal static partial class RopeInterop
             var hp = piton.pitonHp;
             var itemId = piton.ItemId.value;
 
+            _pitons.Described(localId, new ServerPitonPlaced
+            {
+                PitonId = localId,
+                PosX = position.x,
+                PosY = position.y,
+                PosZ = position.z,
+                RotX = rotation.x,
+                RotY = rotation.y,
+                RotZ = rotation.z,
+                RotW = rotation.w,
+                Quality = quality,
+                PitonHp = hp,
+                ItemId = itemId,
+            });
             network.SendPitonPlaced(new ClientPitonPlaced
             {
                 PitonId = localId,
@@ -254,6 +269,120 @@ internal static partial class RopeInterop
 
         _pitons.Spawned(placed.PitonId, spawned);
         ModLog.Debug($"[Piton] Spawned remote piton #{placed.PitonId} via Lifeline.AddPiton @ ({placed.PosX:F1},{placed.PosY:F1},{placed.PosZ:F1}) quality={placed.Quality} hp={placed.PitonHp}");
+    }
+
+    /// <summary>
+    /// Puts back one of our own pitons that a reload lost. The host never stopped holding it,
+    /// so nothing is announced: the next reconcile binds it again by its place.
+    /// </summary>
+    private static void RestoreOwnPiton(Il2Cpp.Lifeline lifeline, ServerPitonPlaced own)
+    {
+        var controller = ResolveLocalClimbController();
+        if (controller == null || controller.Pointer == IntPtr.Zero)
+        {
+            _pitons.RestoreFailed(own.PitonId);
+            return;
+        }
+
+        try
+        {
+            lifeline.AddPiton(new Vector3(own.PosX, own.PosY, own.PosZ),
+                new Quaternion(own.RotX, own.RotY, own.RotZ, own.RotW),
+                (Il2Cpp.PitonExecutionQuality)own.Quality, own.PitonHp,
+                (Il2Cpp.InventoryItemStringId)own.ItemId, controller);
+            ModLog.Debug($"[Piton] Put back own piton #{own.PitonId} lost by a reload @ ({own.PosX:F1},{own.PosY:F1},{own.PosZ:F1})");
+        }
+        catch (Exception ex)
+        {
+            ModLog.Warning($"[Piton] Could not put back own piton #{own.PitonId}: {ex.Message}");
+            _pitons.RestoreFailed(own.PitonId);
+        }
+    }
+
+    /// <summary>
+    /// Takes the nearest piton off the wall by hand and puts it in the bag — the Climbot's
+    /// job, done by the climber now that there is none. Piton sync sees it leave the Lifeline
+    /// next to this climber and has it taken off everyone else's wall too.
+    /// </summary>
+    /// <returns>Null on success, otherwise why nothing was taken.</returns>
+    internal static string TryTakeUpClosestPiton(Vector3 from, float reachMeters)
+    {
+        var lifeline = TryGetLifeline();
+        var placed = lifeline?.PlacedPitons;
+        if (placed == null) return "No piton within reach.";
+
+        Il2Cpp.Piton closest = null;
+        var bestSquared = reachMeters * reachMeters;
+        try
+        {
+            for (var i = 0; i < placed.Count; i++)
+            {
+                var piton = placed[i]?.Piton;
+                if (piton == null || piton.Pointer == IntPtr.Zero) continue;
+                var transform = piton.transform;
+                if (transform == null || transform.Pointer == IntPtr.Zero) continue;
+                var squared = (transform.position - from).sqrMagnitude;
+                if (squared > bestSquared) continue;
+                bestSquared = squared;
+                closest = piton;
+            }
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("rope.find-closest-piton", exception);
+            return "No piton within reach.";
+        }
+        if (closest == null) return "No piton within reach.";
+
+        try
+        {
+            // The piton the climber is hanging from is not theirs to pull out from below.
+            if (lifeline.IsPitonCriticalForLifeline(closest))
+                return "That piton is holding your rope. Climb past it first.";
+
+            var itemId = closest.ItemId.value;
+            if (!InventoryAdapter.HasRoomFor(itemId)) return "No room in your backpack for the piton.";
+
+            var before = InventoryAdapter.CountInBag(itemId);
+            lifeline.DetachPiton(closest);
+            // Whether taking a piton off returns it to the bag is the game's business; the
+            // climber gets it exactly once either way.
+            if (InventoryAdapter.CountInBag(itemId) <= before && !InventoryAdapter.TryStoreOne(itemId))
+                ModLog.Warning("[Piton] Took a piton off the wall but could not put it in the bag.");
+            ModLog.Debug($"[Piton] Took up a piton by hand ({Mathf.Sqrt(bestSquared):F1} m away)");
+            return null;
+        }
+        catch (Exception exception)
+        {
+            ModLog.Warning($"[Piton] Could not take the piton out: {exception.Message}");
+            return "The piton would not come out.";
+        }
+    }
+
+    /// <summary>
+    /// How close a climber must be to take a piton out by hand, as the game sets it for its
+    /// own netplay rope. Falls back when the table is not loaded.
+    /// </summary>
+    internal static float PitonTakeUpReachMeters(float fallback)
+    {
+        try
+        {
+            if (!Il2Cpp.TweakableBase<Il2CppTheGameBakers.Cairn.Netplay.NetplayTweakables>.IsReady) return fallback;
+            var settings = Il2Cpp.TweakableBase<Il2CppTheGameBakers.Cairn.Netplay.NetplayTweakables>.Instance?.SharedRopeSettings;
+            var reach = settings?.recoverPitonDistanceMeters ?? 0f;
+            return reach > 0f && float.IsFinite(reach) ? reach : fallback;
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("rope.read-recover-distance", exception);
+            return fallback;
+        }
+    }
+
+    /// <summary>Set every frame from the session's mode.</summary>
+    internal static bool RestoreOwnPitonsAfterReload
+    {
+        set => _pitons.RestoreOwnAfterReload = value;
     }
 
     private static void DetachWhenAllowed(IntPtr pointer)

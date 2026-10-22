@@ -221,7 +221,17 @@ internal sealed class ReviveFeature : MultiplayerFeature
     {
         _isOut = true;
         _sceneResetSinceOut = false;
+        if (IsHost) YieldLeadIfRoped(LocalPlayerId);
         Report(ClimberCondition.Out);
+    }
+
+    /// <summary>
+    /// Host only. A climber whose death played out comes back from the last checkpoint, below
+    /// the one who survived: when the two tie in again, the survivor leads.
+    /// </summary>
+    private void YieldLeadIfRoped(int playerId)
+    {
+        if (Rules.LeadAndFollow) Game.Players.YieldRopeLead(playerId);
     }
 
     /// <summary>
@@ -380,6 +390,8 @@ internal sealed class ReviveFeature : MultiplayerFeature
     /// </summary>
     private void TickDeadWeight()
     {
+        // A partner who holds every fall like a piton carries no weight for it either.
+        if (Rules.LeadAndFollow) return;
         if (!IsConnected || _downedPlayers.Count == 0) return;
 
         var carried = 0;
@@ -479,6 +491,7 @@ internal sealed class ReviveFeature : MultiplayerFeature
 
     private void OnConditionChanged(int playerId, DownedChanged message)
     {
+        if (IsHost && message.Condition == ClimberCondition.Out) YieldLeadIfRoped(playerId);
         if (playerId == LocalPlayerId) return;
         _rescuesUnderway.Remove(playerId);
 

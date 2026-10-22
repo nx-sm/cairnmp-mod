@@ -41,6 +41,39 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
+## [Unreleased]
+
+> Protocol **16**: rope clips now name the leader first. Every player in a lobby must
+> run the same build.
+
+### Changed
+
+- Rope team climbs without the Climbot. The climbers carry the gear themselves.
+- A rope has a leader and a last climber. When two climbers tie in, the higher one
+  leads. Only the leader places pitons; the last climber takes them out with **T**
+  (or **View/Share + D-pad ↓**). A climber on their own does both.
+- In Rope team a fall never pulls the partner off: the climber on the wall holds it
+  like a piton that cannot fail. Their grip is not shaken, and a downed partner costs
+  them no endurance.
+- A climber whose death plays out restarts from the last checkpoint while the others
+  keep climbing. The pitons they placed since that checkpoint stay on the wall
+  instead of disappearing for everyone. When they tie in again, the survivor leads.
+- Pitons can be given, dropped and picked up like consumables, so the last climber
+  can pass them back to the leader. A piton passed over arrives undamaged.
+- In Rope team, a player who leaves the session leaves their pitons on the wall.
+- The host refuses a rope between climbers more than 5 m apart.
+
+### Beta notes
+
+- Cairn only honours "no Climbot" on Free roam. The lobby now adds it to the run's
+  constraints on every difficulty, but the story still places the Climbot in its
+  opening scene, where it now stands still instead of following.
+- None of this has been played in a full two-player session yet. In particular, check
+  that pitons can be placed without the Climbot, that the shared rope still appears,
+  and that taking out a piton by hand puts exactly one in the bag.
+
+---
+
 ## [2.4.0] — 2026-10-22 (beta)
 
 > This beta uses protocol **15**. Direct-connect lobbies are new, and every player in a

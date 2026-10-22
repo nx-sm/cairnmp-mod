@@ -36,8 +36,12 @@ internal sealed class PitonActions
     /// <summary>Pitons to take off this Lifeline. Every pointer here is in it this frame.</summary>
     internal readonly List<IntPtr> Detach = new();
 
+    /// <summary>Pitons of ours that a reload lost, to put back where they were. PitonId
+    /// carries our local id: the host still has them, so they are not announced again.</summary>
+    internal readonly List<ServerPitonPlaced> Restore = new();
+
     internal bool IsEmpty => Announce.Count == 0 && Removed.Count == 0 && Recovered.Count == 0
-                             && Spawn.Count == 0 && Detach.Count == 0;
+                             && Spawn.Count == 0 && Detach.Count == 0 && Restore.Count == 0;
 
     internal void Clear()
     {
@@ -46,6 +50,7 @@ internal sealed class PitonActions
         Recovered.Clear();
         Spawn.Clear();
         Detach.Clear();
+        Restore.Clear();
     }
 }
 
@@ -95,6 +100,8 @@ internal sealed class PitonSync
 
     private readonly Dictionary<IntPtr, uint> _ownByPointer = new();
     private readonly Dictionary<uint, Vector3> _ownPositions = new();
+    private readonly Dictionary<uint, ServerPitonPlaced> _ownDetails = new();
+    private readonly List<uint> _restoreFailed = new();
     private readonly HashSet<uint> _ownUnbound = new();
     private readonly HashSet<uint> _ownTakenByOthers = new();
     private readonly Dictionary<uint, Remote> _remote = new();
@@ -111,6 +118,28 @@ internal sealed class PitonSync
 
     internal int OwnCount => _ownByPointer.Count;
     internal int RemoteCount => _remote.Count;
+
+    /// <summary>
+    /// A reload that loses some of our pitons puts them back instead of withdrawing them.
+    /// A climber who dies and restarts from an older checkpoint would otherwise take every
+    /// piton placed since off the wall — the very ones the rope left behind for them.
+    /// </summary>
+    internal bool RestoreOwnAfterReload { get; set; }
+
+    /// <summary>What one of our pitons is, as announced, so it can be put back.</summary>
+    internal void Described(uint localId, ServerPitonPlaced details)
+    {
+        if (_ownPositions.ContainsKey(localId)) _ownDetails[localId] = details;
+    }
+
+    /// <summary>The native side could not put that piton back: it is gone after all.</summary>
+    internal void RestoreFailed(uint localId)
+    {
+        if (!_ownUnbound.Remove(localId)) return;
+        _ownPositions.Remove(localId);
+        _ownDetails.Remove(localId);
+        _restoreFailed.Add(localId);
+    }
 
     /// <summary>
     /// The Lifeline just resolved. The same one as before keeps everything; a different one
@@ -130,6 +159,7 @@ internal sealed class PitonSync
         {
             _ownUnbound.Remove(id);
             _ownPositions.Remove(id);
+            _ownDetails.Remove(id);
         }
         _ownTakenByOthers.Clear();
 
@@ -185,6 +215,7 @@ internal sealed class PitonSync
     /// announced as removed: the host has already withdrawn it.</summary>
     internal void TakenByOther(uint localId)
     {
+        _ownDetails.Remove(localId);
         if (_ownUnbound.Remove(localId))
         {
             _ownPositions.Remove(localId);
@@ -203,6 +234,9 @@ internal sealed class PitonSync
         var attributable = now - _lastReconcileAt <= AttributableGapSeconds;
         _lastReconcileAt = now;
 
+        _actions.Removed.AddRange(_restoreFailed);
+        _restoreFailed.Clear();
+
         NoticeDisappearances(localPosition, attributable);
         RecogniseNewcomers(placed, now);
         QueueSpawns(now);
@@ -220,6 +254,7 @@ internal sealed class PitonSync
             var id = _ownByPointer[pointer];
             _ownByPointer.Remove(pointer);
             _ownPositions.Remove(id);
+            _ownDetails.Remove(id);
             if (!_ownTakenByOthers.Remove(id)) _actions.Removed.Add(id);
         }
 
@@ -286,13 +321,23 @@ internal sealed class PitonSync
 
         if (!_settling || settling) return;
         _settling = false;
-        // Ours before the reload, and not back after it: gone for good.
+        _drop.Clear();
         foreach (var id in _ownUnbound)
         {
+            // Still on everyone else's wall: put it back on ours. It is bound again by its
+            // place once the native side has created it.
+            if (RestoreOwnAfterReload && _ownDetails.TryGetValue(id, out var details))
+            {
+                _actions.Restore.Add(details);
+                continue;
+            }
+            // Ours before the reload, and not back after it: gone for good.
             _ownPositions.Remove(id);
+            _ownDetails.Remove(id);
             _actions.Removed.Add(id);
+            _drop.Add(id);
         }
-        _ownUnbound.Clear();
+        foreach (var id in _drop) _ownUnbound.Remove(id);
     }
 
     private bool TryRebindOwn(PlacedPiton piton)
@@ -385,6 +430,8 @@ internal sealed class PitonSync
     {
         _ownByPointer.Clear();
         _ownPositions.Clear();
+        _ownDetails.Clear();
+        _restoreFailed.Clear();
         _ownUnbound.Clear();
         _ownTakenByOthers.Clear();
         _remote.Clear();

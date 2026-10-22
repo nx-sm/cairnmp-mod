@@ -238,6 +238,10 @@ internal sealed class PlayerStateBroadcaster
             LogMissingLocalNetFrame("player", ref _debugLastMissingPlayerFrameLogAt);
         }
 
+        // A session without the Climbot has none to capture: searching for it every second
+        // costs a scene scan and shares its throttle with the player's own capture.
+        if ((_state.ModeRules.ExtraConstraints & ClimbConstraints.NoClimbot) != 0) return;
+
         if (PawnCaptureInterop.TryCaptureLocalClimbotFrame(out var climbotFrame))
         {
             if (!_debugLoggedFirstClimbotFrameCapture)
