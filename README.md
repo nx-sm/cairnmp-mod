@@ -34,7 +34,7 @@ base URL for local testing with `CAIRNMP_API_URL`.
 
 > [!IMPORTANT]
 > Every player in a lobby must use a compatible CairnMP build. The current wire
-> protocol is **16**; lobby admission may also require the exact mod version.
+> protocol is **17**; lobby admission may also require the exact mod version.
 
 ## Features
 
@@ -127,10 +127,12 @@ In the **Rope team** mode the climbers carry the gear: there is no Climbot.
 - **A death is not the end of the climb.** A climber whose death plays out restarts
   from the last checkpoint while the others keep climbing. The pitons left on the
   wall stay there for them, and they tie in again with `L` once they catch up.
-- **Every player keeps their own copy of the run.** The first launch from a lobby
-  starts it in a free story slot; later launches continue it automatically. Your
-  solo saves are never overwritten. The slot is `[CoopSave] Slot` in
-  `UserData\MelonPreferences.cfg` (0 = slot A); set it to `-1` to start a new run.
+- **Co-op saves are kept apart from single-player.** On every player's machine the
+  co-op run lives in save slot **L** and nowhere else; single-player keeps slots A to
+  K, and a co-op launch never writes to them. Later launches continue the co-op run
+  automatically, from its latest checkpoint. Every save file is backed up to
+  `Saved Games\TheGameBakers\CairnMP-backups\` at start-up and before each launch,
+  and a new co-op run archives the previous one there.
 
 ### Share items
 

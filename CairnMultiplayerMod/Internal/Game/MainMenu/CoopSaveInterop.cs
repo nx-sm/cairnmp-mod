@@ -81,6 +81,96 @@ internal static class CoopSaveInterop
 
     private static int _lastPointedAt = -1;
 
+    /// <summary>
+    /// At game start-up, before Cairn reads its saves: back everything up, give the co-op run
+    /// its own slot (L) if it still sits in another, and make its Story and Summit copies the
+    /// newest one. Returns the slot to remember.
+    /// </summary>
+    internal static int PrepareCoopSlotAtStartup(int rememberedSlot)
+    {
+        try
+        {
+            var backup = BackupSaves();
+            var root = SavesRoot();
+            if (root == null) return CoopSaveFiles.Slot;
+            var archive = backup ?? Path.Combine(root.FullName, "CairnMP-backups",
+                DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + "_startup");
+            return CoopSaveFiles.PrepareAtStartup(root, rememberedSlot, archive, message => ModLog.Info(message));
+        }
+        catch (Exception exception)
+        {
+            ModLog.Warning("[CoopSave] Could not prepare the co-op slot: " + exception.Message);
+            return rememberedSlot;
+        }
+    }
+
+    /// <summary>
+    /// A new co-op run is about to start in slot L: the previous co-op run there goes to the
+    /// backup folder first. Single-player slots are never touched.
+    /// </summary>
+    internal static void ArchiveCoopSlot()
+    {
+        try
+        {
+            var root = SavesRoot();
+            if (root == null) return;
+            var archive = Path.Combine(root.FullName, "CairnMP-backups",
+                DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + "_previous-coop-run");
+            foreach (var build in CoopSaveFiles.BuildFolders(root))
+                CoopSaveFiles.Archive(build, CoopSaveFiles.Slot, archive, message => ModLog.Info(message));
+        }
+        catch (Exception exception)
+        {
+            ModLog.Warning("[CoopSave] Could not archive the previous co-op run: " + exception.Message);
+        }
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<SaveType, byte> _soloActiveSlots = new();
+
+    /// <summary>Remembers where single-player play was pointed, before a co-op launch moves it.</summary>
+    internal static void RememberSoloActiveSlots()
+    {
+        try
+        {
+            var manager = SavegameManager.Instance;
+            if (manager == null || _soloActiveSlots.Count > 0) return;
+            foreach (var channel in Channels)
+            {
+                var slot = manager.GetActiveSlotInfo(channel).slot;
+                // Never remember the co-op slot as the solo one.
+                _soloActiveSlots[channel] = slot == CoopSaveFiles.Slot ? (byte)0 : slot;
+            }
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("coop-save.remember-solo", exception);
+        }
+    }
+
+    /// <summary>
+    /// The co-op session is over: single-player play points where it did before, never at the
+    /// co-op slot, so a solo new game cannot land on the co-op run.
+    /// </summary>
+    internal static void RestoreSoloActiveSlots()
+    {
+        try
+        {
+            var manager = SavegameManager.Instance;
+            if (manager == null) return;
+            foreach (var channel in Channels)
+            {
+                var slot = _soloActiveSlots.TryGetValue(channel, out var remembered) ? remembered : (byte)0;
+                if (manager.GetActiveSlotInfo(channel).slot != slot) manager.ChangeActiveSlot(channel, slot);
+            }
+            _soloActiveSlots.Clear();
+            ModLog.Info("[CoopSave] Single-player saves point at their own slots again");
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("coop-save.restore-solo", exception);
+        }
+    }
+
     /// <summary>How many launch backups are kept; older ones are removed.</summary>
     private const int BackupsKept = 10;
 
@@ -89,18 +179,18 @@ internal static class CoopSaveInterop
     /// Saved Games\TheGameBakers\CairnMP-backups\&lt;time&gt;\ before a lobby launch touches
     /// anything. A run lost to a wrong slot can always be put back from there.
     /// </summary>
-    internal static void BackupSaves()
+    internal static string BackupSaves()
     {
         try
         {
             var root = SavesRoot();
-            if (root == null) return;
+            if (root == null) return null;
             var files = root.EnumerateDirectories("Cairn_*")
                 .Select(game => new DirectoryInfo(Path.Combine(game.FullName, "SAVEGAMES")))
                 .Where(saves => saves.Exists)
                 .SelectMany(saves => saves.EnumerateFiles("SLOT_*.CPK", SearchOption.AllDirectories))
                 .ToArray();
-            if (files.Length == 0) return;
+            if (files.Length == 0) return null;
 
             var backups = Path.Combine(root.FullName, "CairnMP-backups");
             var target = Path.Combine(backups, DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss"));
@@ -115,10 +205,12 @@ internal static class CoopSaveInterop
             var old = new DirectoryInfo(backups).EnumerateDirectories()
                 .OrderByDescending(dir => dir.Name).Skip(BackupsKept).ToArray();
             foreach (var dir in old) dir.Delete(recursive: true);
+            return target;
         }
         catch (Exception exception)
         {
             ModLog.Warning("[CoopSave] Could not back up the saves: " + exception.Message);
+            return null;
         }
     }
 
@@ -170,7 +262,7 @@ internal static class CoopSaveInterop
         return false;
     }
 
-    private static DirectoryInfo SavesRoot()
+    internal static DirectoryInfo SavesRoot()
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var root = new DirectoryInfo(Path.Combine(profile, "Saved Games", "TheGameBakers"));

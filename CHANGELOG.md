@@ -46,6 +46,28 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
+## [Unreleased]
+
+> Protocol **17**: the host's new-game settings travel in a new message.
+
+### Changed
+
+- Co-op and single-player saves are kept apart on every machine, whoever hosts. The
+  co-op run lives in save slot **L** only; single-player keeps A to K, and no co-op
+  launch writes to them. At start-up, before the game reads its saves, every save is
+  backed up, a co-op run left in another slot by an older version moves to L, and L's
+  Story and Summit copies are made the newer of the two — so the run the game lists
+  is always its latest checkpoint. A new co-op run archives the previous one. When a
+  co-op session ends, single-player saves point back at their own slots.
+- Only the host goes through the save and New Game screens, and chooses the difficulty
+  and options there again (2.5.3 skipped them for the host too and overwrote them with
+  the mode's). Joining players wait in the lobby without clicking anything: once the
+  host's game launches, theirs starts by itself, with the host's settings for a new
+  run, or continuing their own copy of the run when the host continued. A player who
+  joins after the launch receives the same settings. Tutorials stay off in co-op.
+
+---
+
 ## [2.5.4] — 2026-10-22 (beta)
 
 > This beta uses protocol **16**, like 2.5.3. Every player in a lobby must run CairnMP

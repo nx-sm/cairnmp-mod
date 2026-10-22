@@ -522,6 +522,9 @@ internal sealed partial class NetworkManager
         foreach (var (a, b) in _ropeLinks())
             SendSteamPayload(target, BuildPayload(PacketId.ServerRopeClip,
                 new ServerRopeClip { FromPlayerId = a, TargetPlayerId = b, Clip = true }), reliable: true);
+
+        if (_lastHostSettings.HasValue)
+            SendSteamPayload(target, BuildPayload(PacketId.ServerHostGameSettings, _lastHostSettings.Value), reliable: true);
     }
 
     private void BroadcastSteamServerPacket(PacketId id, IPacket packet, ulong exceptSteamId, bool reliable)
@@ -688,6 +691,7 @@ internal sealed partial class NetworkManager
     private void ResetSteamTransportState()
     {
         _ropeCreationBudget.Clear();
+        _lastHostSettings = null;
         ResetExtensionApi();
         CloseLobbyTransport();
         _steamTransportActive = false;

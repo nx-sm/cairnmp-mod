@@ -61,6 +61,9 @@ internal sealed partial class NetworkManager
             case PacketId.ServerStartGame:
                 HandleStartGame(reader);
                 break;
+            case PacketId.ServerHostGameSettings:
+                HandleHostGameSettings(reader);
+                break;
             case PacketId.ServerBoneState:
                 HandleBoneState(reader);
                 break;

@@ -81,7 +81,7 @@ public class ProtocolVersionTests
     {
         // When you bump Protocol.Version, update this value AND the release notes
         // to signal to clients that they need to update.
-        Assert.Equal(16, Protocol.Version);
+        Assert.Equal(17, Protocol.Version);
     }
 
     [Fact]
@@ -242,5 +242,34 @@ public class NetFrameDataTests
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
         Assert.Throws<InvalidDataException>(() => frame.Serialize(w));
+    }
+}
+
+public class HostGameSettingsTests
+{
+    [Fact]
+    public void TheHostsChoicesSurviveTheWire()
+    {
+        var sent = new ServerHostGameSettings
+        {
+            Difficulty = 2,
+            ClimbingPackage = 1,
+            SurvivalPackage = 0,
+            Constraints = 16 | 512,
+            CustomizedValid = true,
+            AssistEnabled = true,
+            Character = 1,
+            NewGame = true,
+        };
+        using var stream = new System.IO.MemoryStream();
+        using (var writer = new System.IO.BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+            sent.Serialize(writer);
+        stream.Position = 0;
+        var received = new ServerHostGameSettings();
+        using (var reader = new System.IO.BinaryReader(stream))
+            received.Deserialize(reader);
+
+        Assert.Equal(sent, received);
+        Assert.Equal(91, (int)PacketId.ServerHostGameSettings);
     }
 }

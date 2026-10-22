@@ -32,9 +32,11 @@ public partial class Mod
             return;
         }
 
+        // Only the host's game goes to the save and New Game screens now. Everyone else waits
+        // in the lobby and is started once the host's game launches, with its settings.
         var rules = Lobby.CurrentModeRules;
-        _panel.SetStatus($"Starting {rules.Name}...", true);
-        Lobby.BroadcastStart(BuildStartGame(rules));
+        _panel.SetStatus($"Starting {rules.Name}: choose your save and settings.", true);
+        StartGame.BeginAsHost(BuildStartGame(rules));
     }
 
     /// <summary>The mode decides the difficulty; the rest are launch conveniences that have

@@ -110,6 +110,88 @@ internal static unsafe class GameOptionsInterop
         }
     }
 
+    /// <summary>Switches the tutorials off and leaves every other choice to the player.</summary>
+    public static void ForceSkipTutorials()
+    {
+        try
+        {
+            var opts = FindMainMenuComponent()?.nextGameStartOptions;
+            if (opts == null) return;
+            var ng = opts.newGameOptions;
+            if (ng.skipTutorials && ng.skipPractice) return;
+            ng.skipTutorials = true;
+            ng.skipPractice = true;
+            opts.newGameOptions = ng;
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("game-options.skip-tutorials", exception);
+        }
+    }
+
+    /// <summary>What the host's New Game screens left in the options, to send to the others.</summary>
+    public static bool TryReadNextGameOptions(out ServerHostGameSettings settings)
+    {
+        settings = default;
+        try
+        {
+            var opts = FindMainMenuComponent()?.nextGameStartOptions;
+            if (opts == null) return false;
+            var ng = opts.newGameOptions;
+            var custom = ng.customizedDifficulty;
+            settings = new ServerHostGameSettings
+            {
+                Difficulty = (int)ng.currentSelectedDifficulty,
+                ClimbingPackage = (int)custom.climbingPackage,
+                SurvivalPackage = (int)custom.survivalPackage,
+                Constraints = (int)custom.constraints,
+                CustomizedValid = custom.isValid,
+                AssistEnabled = ng.assistEnabled,
+                Character = (int)ng.character,
+            };
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ModLog.Warning($"[GameOptions] Could not read the host's new-game options: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Writes the host's choices into this player's next new game, tutorials always skipped.
+    /// Re-applied every frame like the mode, because the native flow rewrites the options.
+    /// </summary>
+    public static bool ApplyHostOptions(ServerHostGameSettings settings, bool verbose = false)
+    {
+        try
+        {
+            var opts = FindMainMenuComponent()?.nextGameStartOptions;
+            if (opts == null) return false;
+            var ng = opts.newGameOptions;
+            ng.currentSelectedDifficulty = (DifficultyTweakables.SelectedDifficulty)settings.Difficulty;
+            // The constructor marks it valid, as the mode's own settings always were.
+            ng.customizedDifficulty = new GameSetup.CustomizedDifficulty(
+                (DifficultyTweakables.PackageType)settings.ClimbingPackage,
+                (DifficultyTweakables.PackageType)settings.SurvivalPackage,
+                (GamemodeConstraints)settings.Constraints);
+            ng.assistEnabled = settings.AssistEnabled;
+            ng.character = (PawnManager.Character)settings.Character;
+            ng.skipTutorials = true;
+            ng.skipPractice = true;
+            opts.newGameOptions = ng;
+            if (verbose)
+                ModLog.Info($"[GameOptions] Host's settings applied: difficulty={ng.currentSelectedDifficulty} " +
+                            $"constraints={(GamemodeConstraints)settings.Constraints} assist={settings.AssistEnabled}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ModLog.Error($"[GameOptions] ApplyHostOptions failed: {ex}");
+            return false;
+        }
+    }
+
     private static GameDifficulty _missingDifficultyLogged = GameDifficulty.Invalid;
 
     private static void LogMissingDifficultyOnce(MultiplayerModeRules rules)

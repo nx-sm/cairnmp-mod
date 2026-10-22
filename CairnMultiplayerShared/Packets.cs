@@ -488,6 +488,49 @@ public struct ServerStartGame : IPacket
     }
 }
 
+/// <summary>
+/// What the host picked on the game's own New Game screens — difficulty, its customised
+/// packages and constraints, assist, character — so joining players start the same game
+/// without being asked again. Values are the game's own enums, carried as ints.
+/// </summary>
+public struct ServerHostGameSettings : IPacket
+{
+    public int Difficulty;
+    public int ClimbingPackage;
+    public int SurvivalPackage;
+    public int Constraints;
+    public bool CustomizedValid;
+    public bool AssistEnabled;
+    public int Character;
+
+    /// <summary>The host started a new run (true) or continued its saved one (false).</summary>
+    public bool NewGame;
+
+    public void Serialize(BinaryWriter w)
+    {
+        w.Write(Difficulty);
+        w.Write(ClimbingPackage);
+        w.Write(SurvivalPackage);
+        w.Write(Constraints);
+        w.Write(CustomizedValid);
+        w.Write(AssistEnabled);
+        w.Write(Character);
+        w.Write(NewGame);
+    }
+
+    public void Deserialize(BinaryReader r)
+    {
+        Difficulty = r.ReadInt32();
+        ClimbingPackage = r.ReadInt32();
+        SurvivalPackage = r.ReadInt32();
+        Constraints = r.ReadInt32();
+        CustomizedValid = r.ReadBoolean();
+        AssistEnabled = r.ReadBoolean();
+        Character = r.ReadInt32();
+        NewGame = r.ReadBoolean();
+    }
+}
+
 public struct ServerBoneState : IPacket
 {
     public int PlayerId;

@@ -55,4 +55,26 @@ internal sealed partial class NetworkManager
         ModLog.Debug($"[CairnMP] StartGame: difficulty={(GameDifficulty)packet.Difficulty} skipTut={packet.SkipTutorials} skipPra={packet.SkipPractice} assist={packet.AssistEnabled}");
         OnStartGameReceived?.Invoke(packet);
     }
+
+    private void HandleHostGameSettings(BinaryReader reader)
+    {
+        var packet = new ServerHostGameSettings();
+        packet.Deserialize(reader);
+        ModLog.Info($"[CairnMP] Host settings received: difficulty={packet.Difficulty} constraints={packet.Constraints} assist={packet.AssistEnabled}");
+        OnHostGameSettings?.Invoke(packet);
+    }
+
+    /// <summary>Host only: tells every joined player what the host chose for the new game.</summary>
+    public void BroadcastHostGameSettings(ServerHostGameSettings settings)
+    {
+        if (!IsHandshakeComplete || _steamLobby == null || !_steamLobby.IsHost) return;
+        // Kept for whoever joins after the launch: they start the same game.
+        _lastHostSettings = settings;
+        BroadcastSteamServerPacket(PacketId.ServerHostGameSettings, settings, exceptSteamId: 0, reliable: true);
+        ModLog.Info($"[CairnMP] Sent the host's settings to everyone: difficulty={settings.Difficulty} constraints={settings.Constraints}");
+    }
+
+    public event System.Action<ServerHostGameSettings> OnHostGameSettings;
+
+    private ServerHostGameSettings? _lastHostSettings;
 }

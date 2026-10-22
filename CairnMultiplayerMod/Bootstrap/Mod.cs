@@ -83,6 +83,14 @@ public partial class Mod : MelonMod
                 message => LoggerInstance.Warning(message),
                 message => LoggerInstance.Error(message),
                 LogDebug);
+            // Before Cairn reads its saves: the co-op run gets its own slot, kept apart from
+            // single-player, and the copy the game will list is its latest checkpoint.
+            var coopSlot = CoopSaveInterop.PrepareCoopSlotAtStartup(ModConfig.CoopSaveSlot.Value);
+            if (coopSlot != ModConfig.CoopSaveSlot.Value)
+            {
+                ModConfig.CoopSaveSlot.Value = coopSlot;
+                MelonPreferences.Save();
+            }
             FeatureLog.SetSink(
                 message => LoggerInstance.Msg(message),
                 message => LoggerInstance.Warning(message),
@@ -186,11 +194,12 @@ public partial class Mod : MelonMod
             Network, _runtimeState, Rope.Reset, () => Bivouac?.BlocksGameplaySync() == true,
             isSpeaking: playerId => _voice?.IsSpeaking(playerId) == true);
         StartGame = new StartGameFlow(_panel, _mainMenu.RestoreMainMenuInput, _runtimeState,
-            coopSlot: () => ModConfig.CoopSaveSlot.Value,
-            rememberCoopSlot: slot =>
+            isHost: () => Lobby?.IsHost == true,
+            // Settings first, then the start: joiners act on the start, and wait for both.
+            announceLaunch: (start, settings) =>
             {
-                ModConfig.CoopSaveSlot.Value = slot;
-                MelonPreferences.Save();
+                Network?.BroadcastHostGameSettings(settings);
+                Lobby?.BroadcastStart(start);
             });
         Bivouac = new BivouacSyncGate(
             Network, _panel, _runtimeState, ResetSyncTimers, ResetSceneBoundSyncState, SetLocalState);
@@ -223,7 +232,9 @@ public partial class Mod : MelonMod
             _runtimeState.ModeRules = Lobby.CurrentModeRules;
             var code = Lobby.CurrentRoomCode;
             _panel.SetCurrentLobbyName(Lobby.CurrentLobbyName);
-            _panel.SetStatus(string.IsNullOrEmpty(code) ? "Connected" : $"Connected — code {code}", true);
+            var connected = string.IsNullOrEmpty(code) ? "Connected" : $"Connected — code {code}";
+            // A joiner has nothing to click: their game starts when the host's does.
+            _panel.SetStatus(Lobby.IsHost ? connected : $"{connected}. Waiting for the host to start the game...", true);
             Network.StartTransport(Lobby);
         };
         Lobby.OnLobbyError += err =>
@@ -244,6 +255,8 @@ public partial class Mod : MelonMod
             WeatherInterop.ResetRemoteState();
             RemotePlayerManager.ClearAll();
             Rope.ClearLinks();
+            // The co-op session is over: single-player saves point at their own slots again.
+            CoopSaveInterop.RestoreSoloActiveSlots();
             Bivouac.ForceResume();
             _panel.SetStatus("Disconnected", false);
         };
@@ -298,6 +311,8 @@ public partial class Mod : MelonMod
             RopeInterop.ClearRemotePitons();
             WeatherInterop.ResetRemoteState();
             Rope.ClearLinks();
+            // The co-op session is over: single-player saves point at their own slots again.
+            CoopSaveInterop.RestoreSoloActiveSlots();
             Bivouac.ForceResume();
         };
         Network.OnPlayerJoined += (id, name) =>
@@ -341,5 +356,6 @@ public partial class Mod : MelonMod
         // Authoritative game launch by the server: queues the packet, applies it in
         // Update when the MainMenu scene is active.
         Network.OnStartGameReceived += pkt => StartGame.Begin(pkt);
+        Network.OnHostGameSettings += settings => StartGame.OnHostSettings(settings);
     }
 }

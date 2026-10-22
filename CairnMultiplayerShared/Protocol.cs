@@ -6,7 +6,7 @@ namespace CairnMultiplayer.Shared;
 /// </summary>
 public static class Protocol
 {
-    public const int Version = 16;
+    public const int Version = 17;
     public const string ConnectionKey = "cairnmp";
     public const int DefaultPort = 14000;
 
@@ -122,6 +122,9 @@ public enum PacketId : byte
     ServerFeatureStream = 89,
     /// <summary>Tells a piton's owner that another climber took it up.</summary>
     ServerPitonRecovered = 90,
+
+    /// <summary>The host's new-game choices, sent once its own new game launches.</summary>
+    ServerHostGameSettings = 91,
 }
 
 /// <summary>
