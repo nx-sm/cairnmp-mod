@@ -79,6 +79,97 @@ internal static class CoopSaveInterop
         return null;
     }
 
+    private static int _lastPointedAt = -1;
+
+    /// <summary>How many launch backups are kept; older ones are removed.</summary>
+    private const int BackupsKept = 10;
+
+    /// <summary>
+    /// Copies every save slot file, Story and Summit, to
+    /// Saved Games\TheGameBakers\CairnMP-backups\&lt;time&gt;\ before a lobby launch touches
+    /// anything. A run lost to a wrong slot can always be put back from there.
+    /// </summary>
+    internal static void BackupSaves()
+    {
+        try
+        {
+            var root = SavesRoot();
+            if (root == null) return;
+            var files = root.EnumerateDirectories("Cairn_*")
+                .Select(game => new DirectoryInfo(Path.Combine(game.FullName, "SAVEGAMES")))
+                .Where(saves => saves.Exists)
+                .SelectMany(saves => saves.EnumerateFiles("SLOT_*.CPK", SearchOption.AllDirectories))
+                .ToArray();
+            if (files.Length == 0) return;
+
+            var backups = Path.Combine(root.FullName, "CairnMP-backups");
+            var target = Path.Combine(backups, DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss"));
+            foreach (var file in files)
+            {
+                var channelDir = Path.Combine(target, file.Directory?.Name ?? "UNKNOWN");
+                Directory.CreateDirectory(channelDir);
+                file.CopyTo(Path.Combine(channelDir, file.Name), overwrite: true);
+            }
+            ModLog.Info($"[CoopSave] Backed up {files.Length} save file(s) to {target}");
+
+            var old = new DirectoryInfo(backups).EnumerateDirectories()
+                .OrderByDescending(dir => dir.Name).Skip(BackupsKept).ToArray();
+            foreach (var dir in old) dir.Delete(recursive: true);
+        }
+        catch (Exception exception)
+        {
+            ModLog.Warning("[CoopSave] Could not back up the saves: " + exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// Points the game at a slot holding nothing. Cairn starts a new game, and writes its first
+    /// save, into the active slot; leaving it on a slot with a run in it is how a run got
+    /// overwritten. Returns false when every slot is taken.
+    /// </summary>
+    internal static bool PointAtFreeSlot()
+    {
+        var free = FindFreeSlot();
+        if (!free.HasValue)
+        {
+            ModLog.Warning("[CoopSave] No free save slot to point the game at.");
+            return false;
+        }
+        try
+        {
+            foreach (var channel in Channels)
+                SavegameManager.Instance?.ChangeActiveSlot(channel, free.Value);
+            if (_lastPointedAt != free.Value)
+            {
+                _lastPointedAt = free.Value;
+                ModLog.Info($"[CoopSave] The game now points at free slot {Letter(free.Value)}: a new game can only land there");
+            }
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ModLog.Warning("[CoopSave] Could not point the game at a free slot: " + exception.Message);
+            return false;
+        }
+    }
+
+    /// <summary>Whether the game's Summit or Story active slot holds a save file.</summary>
+    internal static bool ActiveSlotHoldsASave()
+    {
+        try
+        {
+            var manager = SavegameManager.Instance;
+            if (manager == null) return false;
+            foreach (var channel in Channels)
+                if (SaveFile(manager.GetActiveSlotInfo(channel).slot) != null) return true;
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("coop-save.active-slot", exception);
+        }
+        return false;
+    }
+
     private static DirectoryInfo SavesRoot()
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

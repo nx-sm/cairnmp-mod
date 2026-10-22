@@ -68,6 +68,7 @@ internal sealed class StartGameFlow
         _pendingStartRetryTimer = 0f;
         _coopSavePending = false;
         _resumeStage = 0;
+        _resumeFailed = false;
     }
 
     internal void Begin(ServerStartGame pkt)
@@ -130,6 +131,7 @@ internal sealed class StartGameFlow
                         CoopSkipsTutorials, CoopSkipsTutorials, start.AssistEnabled);
                 }
                 _skippedQuestions = false;
+                _resumeFailed = false;
                 _state.ModeRules = rules;
 
                 _forceNewGameOpts = start;
@@ -162,10 +164,20 @@ internal sealed class StartGameFlow
     /// </summary>
     private void SkipNewGameQuestions()
     {
-        if (_skippedQuestions || !MainMenuInterop.TryGetCurrentStep(out var step)) return;
+        if (!MainMenuInterop.TryGetCurrentStep(out var step)) return;
         if (step is not (MainMenuInterop.MainMenuStep.DifficultySelect
             or MainMenuInterop.MainMenuStep.DifficultyCustomization
-            or MainMenuInterop.MainMenuStep.ActivateTutorials)) return;
+            or MainMenuInterop.MainMenuStep.ActivateTutorials
+            or MainMenuInterop.MainMenuStep.LaunchNewStoryGame)) return;
+
+        // A new game is under way, whoever started it: it must land in a slot holding nothing.
+        // Cairn writes it into the active slot, and the game cannot see co-op saves to warn.
+        if (CoopSaveInterop.ActiveSlotHoldsASave()) CoopSaveInterop.PointAtFreeSlot();
+
+        // Only a launch meant to start a new run skips the questions. One that was continuing
+        // a run, and failed, leaves the player in charge of the screens.
+        if (_skippedQuestions || _resumeFailed || _resumeStage > 0
+            || step == MainMenuInterop.MainMenuStep.LaunchNewStoryGame) return;
 
         _skippedQuestions = true;
         MainMenuInterop.ForceMainMenuStep(MainMenuInterop.MainMenuStep.LaunchNewStoryGame);
@@ -197,6 +209,7 @@ internal sealed class StartGameFlow
         if (!CoopSaveInterop.TryGetReadySaveScreen(out var screen)) return;
 
         _coopSavePending = false;
+        CoopSaveInterop.BackupSaves();
         CoopSaveInterop.LogSaves(screen);
         var plan = CoopSavePlan.Decide(_coopSlot(), CoopSaveInterop.HasSave, CoopSaveInterop.FindFreeSlot());
         switch (plan.Action)
@@ -204,10 +217,14 @@ internal sealed class StartGameFlow
             case CoopSaveAction.Resume:
                 // Watched either way: a "continue" that throws or quietly does nothing gets the
                 // direct load next, never a new game.
-                CoopSaveInterop.Resume(screen, plan.Slot);
                 _resumeSlot = plan.Slot;
-                _resumeStage = 1;
-                _resumeWaited = 0f;
+                _resumeFailed = false;
+                if (CoopSaveInterop.Resume(screen, plan.Slot))
+                {
+                    _resumeStage = 1;
+                    _resumeWaited = 0f;
+                }
+                else ResumeDirectlyOrStop();
                 break;
             case CoopSaveAction.NewGame:
                 if (CoopSaveInterop.StartNewGame(screen, plan.Slot)) _rememberCoopSlot(plan.Slot);
@@ -225,6 +242,7 @@ internal sealed class StartGameFlow
     private byte _resumeSlot;
     private int _resumeStage;
     private float _resumeWaited;
+    private bool _resumeFailed;
 
     /// <summary>
     /// Leaving the menu means the load took. Still there after a few seconds: the direct load,
@@ -241,19 +259,38 @@ internal sealed class StartGameFlow
 
         _resumeWaited += Time.unscaledDeltaTime;
         if (_resumeWaited < ResumeStageSeconds) return;
-        _resumeWaited = 0f;
 
         if (_resumeStage == 1)
         {
             ModLog.Warning($"[CoopSave] Still on the menu after continuing slot {CoopSaveInterop.Letter(_resumeSlot)}; loading it directly");
-            CoopSaveInterop.ResumeDirectly(_resumeSlot);
-            _resumeStage = 2;
+            ResumeDirectlyOrStop();
             return;
         }
+        StopResuming();
+    }
 
+    private void ResumeDirectlyOrStop()
+    {
+        if (CoopSaveInterop.ResumeDirectly(_resumeSlot))
+        {
+            _resumeStage = 2;
+            _resumeWaited = 0f;
+            return;
+        }
+        StopResuming();
+    }
+
+    /// <summary>
+    /// The run could not be loaded. The game is pointed back at a free slot before anything
+    /// else can happen: a new game started from here can no longer land on the run.
+    /// </summary>
+    private void StopResuming()
+    {
         _resumeStage = 0;
+        _resumeFailed = true;
+        CoopSaveInterop.PointAtFreeSlot();
         var letter = CoopSaveInterop.Letter(_resumeSlot);
         ModLog.Warning($"[CoopSave] Could not load the rope team's run in slot {letter}. Its save file is untouched.");
-        _panel.SetStatus($"Could not load your co-op save (slot {letter}). Do NOT start a new game: quit and send the log.", true);
+        _panel.SetStatus($"Could not load your co-op save (slot {letter}). It is untouched; quit and send the log.", true);
     }
 }

@@ -45,6 +45,20 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- A lobby launch can no longer overwrite a co-op run. 2.5.3 pointed the game at the run's
+  slot to continue it, and when the game refused to load it, a new game started from the
+  save screen was written over the run. Now every save slot is backed up to
+  `Saved Games\TheGameBakers\CairnMP-backups\` before a lobby launch (the last 10 are
+  kept), the game is pointed back at a free slot the moment a load fails, and any new
+  game started during a launch is sent to a free slot. A failed continue no longer skips
+  the difficulty screens either.
+
+---
+
 ## [2.5.3] — 2026-10-22 (beta)
 
 > This beta uses protocol **16**, like 2.5.2, but every player in a lobby must run
