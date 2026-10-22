@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.6.0](#260--2026-10-22-beta) | 2026-10-22 | Beta | Co-op saves apart from single-player; joiners start with the host |
 | [2.5.4](#254--2026-10-22-beta) | 2026-10-22 | Beta | Lobby launches can no longer overwrite a co-op run |
 | [2.5.3](#253--2026-10-22-beta) | 2026-10-22 | Beta | Partner holds falls, saves read from disk, no View freeze |
 | [2.5.2](#252--2026-10-22-beta) | 2026-10-22 | Beta | Co-op saves resume their run; View no longer pauses |
@@ -46,9 +47,10 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
-## [Unreleased]
+## [2.6.0] — 2026-10-22 (beta)
 
-> Protocol **17**: the host's new-game settings travel in a new message.
+> This beta uses protocol **17**: the host's new-game settings travel in a new message.
+> Every player in a lobby must run CairnMP 2.6.0.
 
 ### Changed
 
