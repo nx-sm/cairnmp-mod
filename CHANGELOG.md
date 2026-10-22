@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.5.1](#251--2026-10-22-beta) | 2026-10-22 | Beta | Shared drawn rope, falls caught by rewind, co-op saves |
 | [2.5.0](#250--2026-10-22-beta) | 2026-10-22 | Beta | Rope team without the Climbot: leader and last climber |
 | [2.4.0](#240--2026-10-22-beta) | 2026-10-22 | Beta | Direct-connect lobbies for GOG and Steam copies together |
 | [2.3.1](#231--2026-10-15-beta) | 2026-10-15 | Beta | Game modes, races and rescues that keep their word |
@@ -42,7 +43,10 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
-## [Unreleased]
+## [2.5.1] — 2026-10-22 (beta)
+
+> This beta uses protocol **16**, like 2.5.0, but every player in a lobby must run
+> CairnMP 2.5.1.
 
 ### Changed
 
@@ -51,7 +55,6 @@ All notable CairnMP changes are documented here. Releases follow
 - No more fixed roles: whoever is ahead leads, and anyone can place a piton or take
   one out. Taking out a piton is now **P**, so it no longer also toggles the climb
   trails.
-
 - A Rope team run has its own story save on every player's machine. The first launch
   from a lobby starts it in a free slot; every later launch continues it automatically,
   for the host and for each guest. Set `[CoopSave] Slot` in `MelonPreferences.cfg` to
