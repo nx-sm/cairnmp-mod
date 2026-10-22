@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.5.2](#252--2026-10-22-beta) | 2026-10-22 | Beta | Co-op saves resume their run; View no longer pauses |
 | [2.5.1](#251--2026-10-22-beta) | 2026-10-22 | Beta | Shared drawn rope, falls caught by rewind, co-op saves |
 | [2.5.0](#250--2026-10-22-beta) | 2026-10-22 | Beta | Rope team without the Climbot: leader and last climber |
 | [2.4.0](#240--2026-10-22-beta) | 2026-10-22 | Beta | Direct-connect lobbies for GOG and Steam copies together |
@@ -43,7 +44,10 @@ All notable CairnMP changes are documented here. Releases follow
 
 ---
 
-## [Unreleased]
+## [2.5.2] — 2026-10-22 (beta)
+
+> This beta uses protocol **16**, like 2.5.1, but every player in a lobby must run
+> CairnMP 2.5.2.
 
 ### Fixed
 
