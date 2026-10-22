@@ -178,11 +178,9 @@ Open `CairnMultiplayer.sln` from the repository root in **JetBrains Rider**. It
 loads the mod, shared protocol, source generator, and both test projects. The main
 Markdown guides appear in the `Documentation` solution folder.
 
-If game types are unresolved, generate local IL2CPP references:
-
-```powershell
-pwsh scripts/generate-il2cpp-refs.ps1
-```
+If game types are unresolved, set up the local
+[reference assemblies](#reference-assemblies). If Cairn already runs with
+MelonLoader, linking `game-refs/` to that install is the quickest option.
 
 Generated references remain local and must never be committed.
 
@@ -216,18 +214,42 @@ same location.
 The build depends on proprietary Cairn, Unity, and MelonLoader assemblies that
 cannot be redistributed. `game-refs/` is therefore ignored by Git.
 
+`Directory.Build.props` looks for them in this order:
+
+| Assemblies | First choice | Fallback |
+| --- | --- | --- |
+| IL2CPP game and Unity | `game-refs/Il2CppAssemblies/` | `%LOCALAPPDATA%\CairnMultiplayerData\game\MelonLoader\Il2CppAssemblies` |
+| MelonLoader, Harmony, Il2CppInterop | `MELON_LOADER_NET6_DIR` | `game-refs/MelonLoader/` |
+
 Choose one setup:
 
-1. place the assemblies under `game-refs/Il2CppAssemblies/` and
-   `game-refs/MelonLoader/`; or
-2. point `MELON_LOADER_NET6_DIR` at the MelonLoader `net6` directory and let
-   `Directory.Build.props` read IL2CPP assemblies from the local Cairn install.
+1. **Link an existing install (recommended).** If Cairn already has MelonLoader
+   and has been launched once, link `game-refs/` to it. Directory junctions need
+   no administrator rights and follow the game when MelonLoader regenerates its
+   assemblies:
 
-The default IL2CPP location is:
+   ```powershell
+   $ml = "<Cairn folder>\MelonLoader"
+   New-Item -ItemType Directory game-refs
+   New-Item -ItemType Junction -Path game-refs\Il2CppAssemblies -Target "$ml\Il2CppAssemblies"
+   New-Item -ItemType Junction -Path game-refs\MelonLoader -Target "$ml\net6"
+   ```
 
-```text
-%LOCALAPPDATA%\CairnMultiplayerData\game\MelonLoader\Il2CppAssemblies
-```
+2. **Copy the assemblies** into `game-refs/Il2CppAssemblies/` and
+   `game-refs/MelonLoader/`. Copy them again after a game update.
+3. **Use the launcher's game copy.** Run `scripts/generate-il2cpp-refs.ps1`, which
+   installs MelonLoader into `%LOCALAPPDATA%\CairnMultiplayerData\game` and
+   generates the assemblies there.
+4. **Pass the folders per build:**
+   `-p:Il2CppAssembliesDir=<folder> -p:MelonLoaderNet6Dir=<folder>`. Setting
+   `MELON_LOADER_NET6_DIR` alone is not enough, because IL2CPP assemblies still
+   fall back to the `%LOCALAPPDATA%` path.
+
+If the build reports dozens of `MSB3245: Could not resolve this reference`
+warnings followed by missing-type errors, none of these locations holds the
+assemblies. Check that `game-refs\Il2CppAssemblies\UnityEngine.CoreModule.dll`
+and `game-refs\MelonLoader\MelonLoader.dll` exist. After a Cairn update, launch
+the game once so MelonLoader regenerates the IL2CPP assemblies.
 
 ## Build and test
 

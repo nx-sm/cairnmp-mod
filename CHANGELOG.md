@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.4.0](#240--2026-10-22-beta) | 2026-10-22 | Beta | Direct-connect lobbies for GOG and Steam copies together |
 | [2.3.1](#231--2026-10-15-beta) | 2026-10-15 | Beta | Game modes, races and rescues that keep their word |
 | [2.3.0](#230--2026-09-18-beta) | 2026-09-18 | Beta | Game modes, downed climbers and a rebuilt panel |
 | [2.2.17](#2217--2026-09-18-stable) | 2026-09-18 | Stable | Streaming crash mitigation and realistic voice occlusion |
@@ -37,6 +38,44 @@ All notable CairnMP changes are documented here. Releases follow
 | [1.1.0](#110--2026-08-02) | 2026-08-02 | Stable | Managed extension API and diagnostics |
 | [1.0.0](#100--2026-07-11) | 2026-07-11 | Stable | First stable release |
 | [0.1.37](#0137--2026-07-09-beta) | 2026-07-09 | Beta | Multiplayer save and piton fixes |
+
+---
+
+## [2.4.0] — 2026-10-22 (beta)
+
+> This beta uses protocol **15**. Direct-connect lobbies are new, and every player in a
+> lobby must run CairnMP 2.4.0.
+
+### Added
+
+- Direct connect: a lobby can be hosted on a UDP port and joined with the host's
+  `address:port`, without Steam. A GOG copy and a Steam copy can now play together, and
+  either can host. Pick **Direct IP** as the visibility when hosting, and paste the
+  address into the code field to join. See the
+  [direct-connect guide](docs/direct-connect.md).
+- A GOG copy, where Steam cannot start for Cairn, always hosts with Direct IP. The mod
+  still loads on a game build that ships without Steamworks.
+- Direct-connect settings in `MelonPreferences.cfg` under `[DirectConnect]`: `Port`
+  (default 27420), an optional `Password`, and `ReconnectSeconds`.
+- A direct-connect session dropped without a goodbye is retried for five minutes
+  instead of ending. The guest redials and returns to the same seat, which the host
+  holds and shows as *(reconnecting…)*. The host then resends pitons, rope links and
+  extension state. A host that restarts at the same address is followed into its new
+  lobby.
+
+### Changed
+
+- Lobbies sit behind a common interface, and Steam matchmaking and P2P are unchanged
+  for Steam-only lobbies.
+
+### Compatibility
+
+- Protocol stays at **15**, but all lobby members must use this exact version.
+
+### Beta notes
+
+- Direct connect is covered by the test suites and builds against the game, but has not
+  yet been played in a live Steam-and-GOG session.
 
 ---
 

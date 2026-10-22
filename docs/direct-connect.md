@@ -26,6 +26,10 @@ reference, which a GOG copy may not include.
      -p:Il2CppAssembliesDir="$cairn\MelonLoader\Il2CppAssemblies" -p:DeployMod=false
    ```
 
+   To skip the variable and property on later builds, link `game-refs\` to the
+   install once instead (see
+   [Reference assemblies](../README.md#reference-assemblies)).
+
 4. Collect these files from `CairnMultiplayerMod\bin\Release\net6.0\`:
    `CairnMultiplayerMod.dll`, `CairnMultiplayerShared.dll`, `LiteNetLib.dll`,
    `Concentus.dll`, `NAudio.Core.dll`, `NAudio.Wasapi.dll`, plus

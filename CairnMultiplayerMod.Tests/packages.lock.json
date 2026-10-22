@@ -38,6 +38,11 @@
           "System.Numerics.Vectors": "4.5.0"
         }
       },
+      "LiteNetLib": {
+        "type": "Transitive",
+        "resolved": "1.3.5",
+        "contentHash": "WKJEIdQfLDWFEzdKpLZzwB9Umci/2TWxX6ZZnZHhbJ4Z0c1eccS2pZpgUFcHtEnrUY+H1vOFqxzOrgoQpG6unQ=="
+      },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
         "resolved": "17.13.0",
@@ -138,6 +143,7 @@
         "dependencies": {
           "CairnMultiplayerShared": "[1.0.0, )",
           "Concentus": "[2.2.2, )",
+          "LiteNetLib": "[1.3.5, )",
           "NAudio.Wasapi": "[2.2.1, )"
         }
       },
