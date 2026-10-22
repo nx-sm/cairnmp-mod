@@ -101,7 +101,7 @@ namespace CairnMultiplayerMod.Internal.Networking
 
             StartLobbyRegistry();
 
-            OnLobbyEntered?.Invoke(lobbyId);
+            OnLobbyEntered?.Invoke();
             OnMembersChanged?.Invoke();
             TryHandleStartSignal();
 

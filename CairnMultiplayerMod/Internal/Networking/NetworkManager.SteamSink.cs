@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using CairnMultiplayer.Shared;
 using CairnMultiplayerMod.Internal.Networking.Authoritative;
-using Il2CppSteamworks;
 
 namespace CairnMultiplayerMod.Internal.Networking;
 
@@ -36,7 +35,7 @@ internal sealed partial class NetworkManager
         {
             if (!_t._steamIdsByPlayerId.TryGetValue(playerId, out var steamId)) return;
             if (steamId == 0 || steamId == _t._steamLocalId) return;
-            _t.SendSteamPayload(new CSteamID(steamId), BuildPayload(id, packet),
+            _t.SendSteamPayload(steamId, BuildPayload(id, packet),
                 reliability == NetReliability.ReliableOrdered);
         }
 

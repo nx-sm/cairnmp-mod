@@ -12,7 +12,7 @@ namespace CairnMultiplayerMod.Internal.UI.Toolkit;
 
 internal sealed partial class UiToolkitMultiplayerPanel : IMultiplayerPanel
 {
-    private readonly SteamLobbyManager _lobby;
+    private readonly ILobby _lobby;
     private enum Screen
     {
         Home,
@@ -77,7 +77,7 @@ internal sealed partial class UiToolkitMultiplayerPanel : IMultiplayerPanel
 
     public bool IsVisible => _visible;
 
-    public UiToolkitMultiplayerPanel(SteamLobbyManager lobby)
+    public UiToolkitMultiplayerPanel(ILobby lobby)
     {
         _lobby = lobby ?? throw new ArgumentNullException(nameof(lobby));
     }
@@ -407,7 +407,7 @@ internal sealed partial class UiToolkitMultiplayerPanel : IMultiplayerPanel
         var visibilityCol = Column();
         visibilityCol.style.flexGrow = 1;
         visibilityCol.Add(CairnUi.MicroLabel("VISIBILITY"));
-        _visibilitySegment = new SegmentControl(new[] { "Public", "Friends", "Private" }, 0);
+        _visibilitySegment = new SegmentControl(new[] { "Public", "Friends", "Private", "Direct IP" }, 0);
         visibilityCol.Add(_visibilitySegment.Root);
         configRow.Add(visibilityCol);
 
@@ -437,7 +437,7 @@ internal sealed partial class UiToolkitMultiplayerPanel : IMultiplayerPanel
         row.style.marginBottom = 0;
         card.Add(row);
 
-        _codeField = CairnUi.TextField("XXXX-XXXX", 9);
+        _codeField = CairnUi.TextField("CODE or IP:PORT", 64);
         _codeField.style.flexGrow = 1;
         _codeField.style.marginRight = 10;
         row.Add(_codeField);
@@ -732,7 +732,8 @@ internal sealed partial class UiToolkitMultiplayerPanel : IMultiplayerPanel
         {
             0 => LobbyVisibility.Public,
             1 => LobbyVisibility.FriendsOnly,
-            _ => LobbyVisibility.Private,
+            2 => LobbyVisibility.Private,
+            _ => LobbyVisibility.Direct,
         };
 
         OnHostRequested?.Invoke(new HostConfig
@@ -813,7 +814,7 @@ internal sealed partial class UiToolkitMultiplayerPanel : IMultiplayerPanel
         }
     }
 
-    private void RefreshConnected(SteamLobbyManager lobby, string localPlayerName)
+    private void RefreshConnected(ILobby lobby, string localPlayerName)
     {
         if (lobby == null) return;
 

@@ -4,18 +4,14 @@ using System.IO;
 using CairnMultiplayer.Shared;
 using CairnMultiplayerMod.Internal.Diagnostics;
 using CairnMultiplayerMod.Internal.Networking.Authoritative;
-using Il2CppInterop.Runtime;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
-using Il2CppSteamworks;
 
 namespace CairnMultiplayerMod.Internal.Networking;
 
 internal sealed partial class NetworkManager
 {
-    private const int SteamGameplayChannel = 0;
     private const double SteamReliablePresenceIntervalSeconds = 1.0;
 
-    private SteamLobbyManager _steamLobby;
+    private ILobby _steamLobby;
     private bool _steamTransportActive;
     private ulong _steamLocalId;
     private ulong _steamHostId;
@@ -34,43 +30,42 @@ internal sealed partial class NetworkManager
     // Piton state is owned by a transport-independent authority.
     private readonly HashSet<ulong> _steamLoggedFirstClientPlayerFrame = new();
     private readonly HashSet<ulong> _steamLoggedFirstClientClimbotFrame = new();
-    private Callback<P2PSessionRequest_t> _steamP2PSessionRequestCallback;
-    private Callback<P2PSessionConnectFail_t> _steamP2PSessionConnectFailCallback;
 
     public bool IsSteamTransportActive => _steamTransportActive;
 
-    public void StartSteamTransport(SteamLobbyManager lobby)
+    /// <summary>Starts the packet pipe of whichever lobby was entered — Steam or direct.
+    /// The "Steam" names below predate direct connect: a peer id is a SteamID64 or a
+    /// direct-connect id, and nothing here depends on which.</summary>
+    public void StartTransport(ILobby lobby)
     {
         if (lobby == null || !lobby.IsInLobby) return;
 
         _steamLobby = lobby;
         _steamTransportActive = true;
-        _steamLocalId = SteamUser.GetSteamID().m_SteamID;
-        _steamHostId = lobby.HostSteamId;
+        _steamLocalId = lobby.LocalPeerId;
+        _steamHostId = lobby.HostPeerId;
         _lastReliablePresenceSentAt = 0;
-        CurrentLobbyId = lobby.CurrentLobbyId.m_SteamID.ToString();
+        CurrentLobbyId = lobby.CurrentLobbyKey;
         CurrentRoomCode = lobby.CurrentRoomCode;
-        ServerName = string.IsNullOrEmpty(lobby.CurrentLobbyName) ? "Steam lobby" : lobby.CurrentLobbyName;
+        ServerName = string.IsNullOrEmpty(lobby.CurrentLobbyName) ? "Lobby" : lobby.CurrentLobbyName;
         LocalPlayerId = StableSteamPlayerId(_steamLocalId);
         IsHandshakeComplete = lobby.IsHost;
 
-        try { SteamNetworking.AllowP2PPacketRelay(true); }
-        catch (Exception ex) { ModLog.Warning($"[SteamP2P] Allow relay failed: {ex.Message}"); }
-        EnsureSteamP2PCallbacks();
+        lobby.OpenTransport();
 
-        RefreshSteamLobbyMembers(lobby);
+        RefreshLobbyMembers(lobby);
         InitializeExtensionApi();
         if (lobby.IsHost)
             OnHandshakeAck?.Invoke();
         ModLog.Debug($"[SteamP2P] Transport active. local={_steamLocalId} host={_steamHostId} playerId={LocalPlayerId}");
     }
 
-    public void RefreshSteamLobbyMembers(SteamLobbyManager lobby)
+    public void RefreshLobbyMembers(ILobby lobby)
     {
         if (!_steamTransportActive || lobby == null || !lobby.IsInLobby) return;
 
         _steamLobby = lobby;
-        _steamHostId = lobby.HostSteamId;
+        _steamHostId = lobby.HostPeerId;
 
         _steamMembersPresent.Clear();
         foreach (var member in lobby.Members)
@@ -84,8 +79,7 @@ internal sealed partial class NetworkManager
 
             if (member.SteamId == _steamLocalId) continue;
 
-            try { SteamNetworking.AcceptP2PSessionWithUser(new CSteamID(member.SteamId)); }
-            catch (Exception exception) { ModLog.SuppressedException("steam-p2p.accept-lobby-member", exception); }
+            lobby.AcceptPeer(member.SteamId);
 
             if (!_remotePlayers.ContainsKey(playerId))
             {
@@ -117,8 +111,7 @@ internal sealed partial class NetworkManager
             NotifyExtensionPeerLeft(playerId);
             if (_steamIdsByPlayerId.TryGetValue(playerId, out var steamId))
             {
-                try { SteamNetworking.CloseP2PSessionWithUser(new CSteamID(steamId)); }
-                catch (Exception exception) { ModLog.SuppressedException("steam-p2p.close-departed-member", exception); }
+                lobby.ClosePeer(steamId);
                 _steamPlayerIds.Remove(steamId);
                 _steamPlayerNames.Remove(steamId);
                 _manifestHandledPeers.Remove(steamId);
@@ -141,29 +134,17 @@ internal sealed partial class NetworkManager
         }
 
         if (ShouldRefreshSteamMembers())
-            RefreshSteamLobbyMembers(_steamLobby);
+            RefreshLobbyMembers(_steamLobby);
         try
         {
-            uint packetSize;
             int guard = 0;
-            while (SteamNetworking.IsP2PPacketAvailable(out packetSize, SteamGameplayChannel) && guard++ < 256)
+            // The pipe can close mid-loop (a packet that makes us leave), hence the re-check.
+            while (guard++ < 256 && _steamLobby != null && _steamLobby.TryReceive(out var remoteId, out var payload))
             {
-                if (packetSize == 0) break;
-
-                var buffer = new Il2CppStructArray<byte>((long)packetSize);
-                uint bytesRead;
-                CSteamID remoteId;
-                if (!SteamNetworking.ReadP2PPacket(buffer, packetSize, out bytesRead, out remoteId, SteamGameplayChannel))
-                    break;
-
-                var payload = new byte[bytesRead];
-                for (int i = 0; i < bytesRead; i++)
-                    payload[i] = buffer[i];
-
                 // One bad packet must not end the pump: a truncated payload would otherwise
                 // strand every packet queued behind it, frame after frame.
                 try { ProcessSteamPacket(remoteId, payload); }
-                catch (Exception ex) { LogDroppedSteamPacket(remoteId.m_SteamID, payload, ex); }
+                catch (Exception ex) { LogDroppedSteamPacket(remoteId, payload, ex); }
             }
         }
         catch (Exception ex)
@@ -172,30 +153,29 @@ internal sealed partial class NetworkManager
         }
     }
 
-    private void ProcessSteamPacket(CSteamID remoteId, byte[] payload)
+    private void ProcessSteamPacket(ulong remoteId, byte[] payload)
     {
         if (payload == null || payload.Length == 0) return;
 
-        if (!IsSteamLobbyMember(remoteId.m_SteamID))
+        if (!IsSteamLobbyMember(remoteId))
         {
-            ModLog.Warning($"[SteamP2P] Ignored packet from non-lobby peer {remoteId.m_SteamID}");
+            ModLog.Warning($"[SteamP2P] Ignored packet from non-lobby peer {remoteId}");
             return;
         }
 
-        try { SteamNetworking.AcceptP2PSessionWithUser(remoteId); }
-        catch (Exception exception) { ModLog.SuppressedException("steam-p2p.accept-packet-sender", exception); }
+        _steamLobby.AcceptPeer(remoteId);
 
         var id = (PacketId)payload[0];
         if (_steamLobby != null && _steamLobby.IsHost)
         {
-            ProcessSteamHostPacket(remoteId.m_SteamID, id, payload);
+            ProcessSteamHostPacket(remoteId, id, payload);
             return;
         }
 
         // Clients accept authoritative Server* traffic only from the lobby owner.
-        if (remoteId.m_SteamID != _steamHostId)
+        if (remoteId != _steamHostId)
         {
-            ModLog.Warning($"[SteamP2P] Ignored non-host packet {id} from {remoteId.m_SteamID}");
+            ModLog.Warning($"[SteamP2P] Ignored non-host packet {id} from {remoteId}");
             return;
         }
 
@@ -500,7 +480,7 @@ internal sealed partial class NetworkManager
     private void SendSteamPacketToHost(PacketId id, IPacket packet, bool reliable)
     {
         if (_steamHostId == 0 || _steamHostId == _steamLocalId) return;
-        SendSteamPayload(new CSteamID(_steamHostId), BuildPayload(id, packet), reliable);
+        SendSteamPayload(_steamHostId, BuildPayload(id, packet), reliable);
     }
 
     private bool IsAdmittedPlayer(int playerId)
@@ -515,7 +495,7 @@ internal sealed partial class NetworkManager
             return false;
 
         var pkt = new ServerTeleport { X = x, Y = y, Z = z, Yaw = yaw };
-        SendSteamPayload(new CSteamID(steamId), BuildPayload(PacketId.ServerTeleport, pkt), reliable: true);
+        SendSteamPayload(steamId, BuildPayload(PacketId.ServerTeleport, pkt), reliable: true);
         ModLog.Debug($"[CairnMP] Sent ServerTeleport to player {targetPlayerId} (steam={steamId})");
         return true;
     }
@@ -525,7 +505,7 @@ internal sealed partial class NetworkManager
         if (steamId == 0 || steamId == _steamLocalId)
             return;
 
-        var target = new CSteamID(steamId);
+        var target = steamId;
 
         Pitons.SendSnapshotTo(EnsureSteamRemotePlayer(steamId));
 
@@ -541,32 +521,24 @@ internal sealed partial class NetworkManager
         {
             if (member.SteamId == 0 || member.SteamId == _steamLocalId || member.SteamId == exceptSteamId) continue;
             if (_steamLobby.IsHost && !IsExtensionPeerAdmitted(member.SteamId)) continue;
-            SendSteamPayload(new CSteamID(member.SteamId), payload, reliable);
+            SendSteamPayload(member.SteamId, payload, reliable);
         }
     }
 
-    private bool SendSteamPayload(CSteamID target, byte[] payload, bool reliable)
+    private bool SendSteamPayload(ulong target, byte[] payload, bool reliable)
     {
-        if (!_steamTransportActive || payload == null || payload.Length == 0) return false;
+        if (!_steamTransportActive || _steamLobby == null || payload == null || payload.Length == 0) return false;
 
         try
         {
-            var data = new Il2CppStructArray<byte>(payload.Length);
-            for (int i = 0; i < payload.Length; i++)
-                data[i] = payload[i];
-
-            var forceReliable = !reliable && payload.Length > 1100;
-            var sendType = (reliable || forceReliable)
-                ? EP2PSend.k_EP2PSendReliable
-                : EP2PSend.k_EP2PSendUnreliableNoDelay;
-            bool ok = SteamNetworking.SendP2PPacket(target, data, (uint)payload.Length, sendType, SteamGameplayChannel);
+            bool ok = _steamLobby.Send(target, payload, reliable);
             if (!ok && ShouldLogSteamSendFailure())
-                ModLog.Warning($"[SteamP2P] Send failed target={target.m_SteamID} size={payload.Length} reliable={reliable}");
+                ModLog.Warning($"[SteamP2P] Send failed target={target} size={payload.Length} reliable={reliable}");
             return ok;
         }
         catch (Exception ex)
         {
-            ModLog.Warning($"[SteamP2P] Send exception target={target.m_SteamID}: {ex.Message}");
+            ModLog.Warning($"[SteamP2P] Send exception target={target}: {ex.Message}");
             return false;
         }
     }
@@ -684,73 +656,13 @@ internal sealed partial class NetworkManager
         return id == 0 ? 1 : id;
     }
 
-    private void EnsureSteamP2PCallbacks()
-    {
-        try
-        {
-            _steamP2PSessionRequestCallback ??= Callback<P2PSessionRequest_t>.Create(
-                DelegateSupport.ConvertDelegate<Callback<P2PSessionRequest_t>.DispatchDelegate>(
-                    new Action<P2PSessionRequest_t>(OnSteamP2PSessionRequest)));
-            _steamP2PSessionConnectFailCallback ??= Callback<P2PSessionConnectFail_t>.Create(
-                DelegateSupport.ConvertDelegate<Callback<P2PSessionConnectFail_t>.DispatchDelegate>(
-                    new Action<P2PSessionConnectFail_t>(OnSteamP2PSessionConnectFail)));
-        }
-        catch (Exception ex)
-        {
-            ModLog.Warning($"[SteamP2P] Callback registration failed: {ex.Message}");
-        }
-    }
-
-    private void OnSteamP2PSessionRequest(P2PSessionRequest_t evt)
-    {
-        var remoteId = evt.m_steamIDRemote;
-        if (!_steamTransportActive || remoteId.m_SteamID == 0) return;
-        if (!IsSteamLobbyMember(remoteId.m_SteamID))
-        {
-            ModLog.Warning($"[SteamP2P] Rejected session request from non-lobby peer {remoteId.m_SteamID}");
-            return;
-        }
-
-        try
-        {
-            SteamNetworking.AcceptP2PSessionWithUser(remoteId);
-            EnsureSteamRemotePlayer(remoteId.m_SteamID);
-            ModLog.Debug($"[SteamP2P] Accepted session request from {remoteId.m_SteamID}");
-        }
-        catch (Exception ex)
-        {
-            ModLog.Warning($"[SteamP2P] Accept session failed for {remoteId.m_SteamID}: {ex.Message}");
-        }
-    }
-
-    private void OnSteamP2PSessionConnectFail(P2PSessionConnectFail_t evt)
-    {
-        var remoteId = evt.m_steamIDRemote;
-        ModLog.Warning($"[SteamP2P] Session failed remote={remoteId.m_SteamID} error={evt.m_eP2PSessionError}");
-    }
-
     private bool IsSteamLobbyMember(ulong steamId)
     {
         if (steamId == 0) return false;
         if (steamId == _steamLocalId) return true;
         if (_steamLobby == null || !_steamLobby.IsInLobby) return false;
 
-        // Reads Steam directly to cover the short delay before OnMembersChanged.
-        try
-        {
-            var count = SteamMatchmaking.GetNumLobbyMembers(_steamLobby.CurrentLobbyId);
-            for (int i = 0; i < count; i++)
-            {
-                var member = SteamMatchmaking.GetLobbyMemberByIndex(_steamLobby.CurrentLobbyId, i);
-                if (member.m_SteamID == steamId) return true;
-            }
-        }
-        catch (Exception exception) { ModLog.SuppressedException("steam-p2p.close-lobby-members", exception); }
-
-        foreach (var member in _steamLobby.Members)
-            if (member.SteamId == steamId) return true;
-
-        return false;
+        return _steamLobby.IsMember(steamId);
     }
 
     private void StopSteamTransport()
@@ -758,26 +670,16 @@ internal sealed partial class NetworkManager
         foreach (var steamId in _steamPlayerIds.Keys)
         {
             if (steamId == 0 || steamId == _steamLocalId) continue;
-            try { SteamNetworking.CloseP2PSessionWithUser(new CSteamID(steamId)); }
-            catch (Exception exception) { ModLog.SuppressedException("steam-p2p.close-session", exception); }
+            _steamLobby?.ClosePeer(steamId);
         }
         ResetSteamTransportState();
-    }
-
-    private void DisposeSteamP2PCallbacks()
-    {
-        try { _steamP2PSessionRequestCallback?.Dispose(); }
-        catch (Exception exception) { ModLog.SuppressedException("steam-p2p.dispose-session-request-callback", exception); }
-        try { _steamP2PSessionConnectFailCallback?.Dispose(); }
-        catch (Exception exception) { ModLog.SuppressedException("steam-p2p.dispose-connect-fail-callback", exception); }
-        _steamP2PSessionRequestCallback = null;
-        _steamP2PSessionConnectFailCallback = null;
     }
 
     private void ResetSteamTransportState()
     {
         _ropeCreationBudget.Clear();
         ResetExtensionApi();
+        CloseLobbyTransport();
         _steamTransportActive = false;
         _steamLobby = null;
         _steamLocalId = 0;
@@ -795,6 +697,11 @@ internal sealed partial class NetworkManager
         _lastReliablePresenceSentAt = 0;
         _lastSteamMemberRefreshAt = 0;
         _lastSteamSendFailLogAt = 0;
-        DisposeSteamP2PCallbacks();
+    }
+
+    private void CloseLobbyTransport()
+    {
+        try { _steamLobby?.CloseTransport(); }
+        catch (Exception exception) { ModLog.SuppressedException("lobby.close-transport", exception); }
     }
 }

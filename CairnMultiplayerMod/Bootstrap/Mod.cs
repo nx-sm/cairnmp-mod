@@ -19,7 +19,7 @@ using MelonLoader;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[assembly: MelonInfo(typeof(CairnMultiplayerMod.Bootstrap.Mod), "Cairn Multiplayer Mod", "2.3.1", "CairnModTeam")]
+[assembly: MelonInfo(typeof(CairnMultiplayerMod.Bootstrap.Mod), "Cairn Multiplayer Mod", "2.4.0", "CairnModTeam")]
 [assembly: MelonGame("TheGameBakers", "Cairn")]
 
 namespace CairnMultiplayerMod.Bootstrap;
@@ -52,7 +52,7 @@ public partial class Mod : MelonMod
     private string _lastLobbyError;
 
     internal NetworkManager Network { get; private set; }
-    internal SteamLobbyManager Lobby { get; private set; }
+    internal LobbyRouter Lobby { get; private set; }
     private readonly RuntimeState _runtimeState = new();
     internal PlayerState LocalState => _runtimeState.LocalPlayerState;
 
@@ -145,7 +145,13 @@ public partial class Mod : MelonMod
         _connectKey = ParseKey(ModConfig.ConnectKey.Value, Key.F5);
         _disconnectKey = ParseKey(ModConfig.DisconnectKey.Value, Key.F6);
         Network = new NetworkManager(RopeLinkState.Links);
-        Lobby = new SteamLobbyManager();
+        Lobby = new LobbyRouter(new DirectLobby(new DirectLobbySettings
+        {
+            Port = () => ModConfig.DirectPort.Value,
+            Password = () => ModConfig.DirectPassword.Value ?? "",
+            PlayerName = LocalPlayerName,
+            ReconnectSeconds = () => ModConfig.DirectReconnectSeconds.Value,
+        }));
         _panel = MultiplayerPanelFactory.Create(Lobby);
         _mainMenu = new MainMenuAdapter(OnStoryModeSelected);
         _hud = new HudAdapter();
@@ -175,7 +181,7 @@ public partial class Mod : MelonMod
 
     private void WireLobbyEvents()
     {
-        Lobby.OnLobbyEntered += _ =>
+        Lobby.OnLobbyEntered += () =>
         {
             _connectingStart = null;
             _lastLobbyError = null;
@@ -185,7 +191,7 @@ public partial class Mod : MelonMod
             var code = Lobby.CurrentRoomCode;
             _panel.SetCurrentLobbyName(Lobby.CurrentLobbyName);
             _panel.SetStatus(string.IsNullOrEmpty(code) ? "Connected" : $"Connected — code {code}", true);
-            Network.StartSteamTransport(Lobby);
+            Network.StartTransport(Lobby);
         };
         Lobby.OnLobbyError += err =>
         {
@@ -193,11 +199,8 @@ public partial class Mod : MelonMod
             _lastLobbyError = err;
             _panel.SetStatus($"Failed: {err}", Lobby.IsInLobby);
         };
-        if (!Lobby.IsSteamIntegrationAvailable)
-        {
-            _lastLobbyError = Lobby.SteamUnavailableReason;
-            _panel.SetStatus($"Unavailable: {_lastLobbyError}", false);
-        }
+        if (!string.IsNullOrEmpty(Lobby.StartupNotice))
+            _panel.SetStatus(Lobby.StartupNotice, false);
         Lobby.OnLobbyLeft += () =>
         {
             SetMultiplayerModeActive(false);
@@ -216,10 +219,17 @@ public partial class Mod : MelonMod
             // The panel rebuilds its member list on every Tick from _lobby.Members,
             // but we also push a short status so the footer reflects the event.
             if (!Lobby.IsInLobby) return;
-            Network.RefreshSteamLobbyMembers(Lobby);
+            Network.RefreshLobbyMembers(Lobby);
             _panel.SetStatus($"{Lobby.Members.Count} player(s) in lobby", true);
         };
         Lobby.OnStartRequested += StartGame.Begin;
+        Lobby.OnConnectionNotice += notice =>
+        {
+            LoggerInstance.Msg($"[CairnMP] {notice}");
+            _panel.SetStatus(notice, Lobby.IsInLobby);
+            _game?.Chat.AddSystemLine(notice);
+        };
+        Lobby.OnPeerReconnected += Network.OnLobbyPeerReconnected;
     }
 
     private void WirePanelEvents()
