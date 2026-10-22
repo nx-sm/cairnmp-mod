@@ -117,7 +117,8 @@ internal sealed partial class NetworkManager
                 _manifestHandledPeers.Remove(steamId);
             }
             _steamIdsByPlayerId.Remove(playerId);
-            if (lobby.IsHost) _pitonAuthority?.RemovePlayer(playerId);
+            RopeOrder.Forget(playerId);
+            if (lobby.IsHost) _pitonAuthority?.RemovePlayer(playerId, KeepPitonsOfLeavers());
             if (_remotePlayers.Remove(playerId))
                 OnPlayerLeft?.Invoke(playerId);
         }
@@ -288,11 +289,7 @@ internal sealed partial class NetworkManager
                     var pkt = new ClientRopeClip();
                     pkt.Deserialize(r);
                     var fromId = EnsureSteamRemotePlayer(remoteSteamId);
-                    if (!RopeRequests.IsAllowed(fromId, pkt.TargetPlayerId, pkt.Clip, _ropeLinks(), IsAdmittedPlayer)) break;
-                    if (pkt.Clip && !_ropeCreationBudget.Take(fromId)) break;
-                    var outPkt = new ServerRopeClip { FromPlayerId = fromId, TargetPlayerId = pkt.TargetPlayerId, Clip = pkt.Clip };
-                    OnRopeClip?.Invoke(fromId, pkt.TargetPlayerId, pkt.Clip);
-                    BroadcastSteamServerPacket(PacketId.ServerRopeClip, outPkt, exceptSteamId: 0, reliable: true);
+                    CommitRopeClip(fromId, pkt.TargetPlayerId, pkt.Clip);
                     break;
                 }
             case PacketId.ClientPitonPlaced:
@@ -320,7 +317,8 @@ internal sealed partial class NetworkManager
                 {
                     var playerId = EnsureSteamRemotePlayer(remoteSteamId);
                     _manifestHandledPeers.Add(remoteSteamId);
-                    _pitonAuthority?.RemovePlayer(playerId);
+                    RopeOrder.Forget(playerId);
+                    _pitonAuthority?.RemovePlayer(playerId, KeepPitonsOfLeavers());
                     NotifyExtensionPeerLeft(playerId);
                     if (_remotePlayers.Remove(playerId))
                         OnPlayerLeft?.Invoke(playerId);
@@ -465,16 +463,39 @@ internal sealed partial class NetworkManager
 
         if (_steamLobby != null && _steamLobby.IsHost)
         {
-            var pkt = new ServerRopeClip { FromPlayerId = LocalPlayerId, TargetPlayerId = targetPlayerId, Clip = clip };
-            if (!RopeRequests.IsAllowed(LocalPlayerId, targetPlayerId, clip, _ropeLinks(), IsAdmittedPlayer)) return;
-            if (clip && !_ropeCreationBudget.Take(LocalPlayerId)) return;
-            OnRopeClip?.Invoke(LocalPlayerId, targetPlayerId, clip);
-            BroadcastSteamServerPacket(PacketId.ServerRopeClip, pkt, exceptSteamId: 0, reliable: true);
+            CommitRopeClip(LocalPlayerId, targetPlayerId, clip);
             return;
         }
 
         SendSteamPacketToHost(PacketId.ClientRopeClip,
             new ClientRopeClip { TargetPlayerId = targetPlayerId, Clip = clip }, reliable: true);
+    }
+
+    /// <summary>
+    /// Host only. A clip goes out leader first when the mode gives ropes a leader: every
+    /// client learns the order from the packet itself, and a latecomer from the snapshot.
+    /// </summary>
+    private void CommitRopeClip(int requester, int target, bool clip)
+    {
+        if (!RopeRequests.IsAllowed(requester, target, clip, _ropeLinks(), IsAdmittedPlayer)) return;
+
+        int first = requester, second = target;
+        if (clip && LeadAndFollow())
+        {
+            if (!RopeOrder.TryOrder(requester, target, PlayerPosition(requester), PlayerPosition(target),
+                    out first, out second))
+            {
+                ModLog.Info($"[RopeCouple] Refused a rope between {requester} and {target}: too far apart");
+                return;
+            }
+        }
+        if (clip && !_ropeCreationBudget.Take(requester)) return;
+        if (clip) RopeOrder.Linked(first, second);
+
+        OnRopeClip?.Invoke(first, second, clip);
+        BroadcastSteamServerPacket(PacketId.ServerRopeClip,
+            new ServerRopeClip { FromPlayerId = first, TargetPlayerId = second, Clip = clip },
+            exceptSteamId: 0, reliable: true);
     }
 
     private void SendSteamPacketToHost(PacketId id, IPacket packet, bool reliable)
@@ -678,6 +699,7 @@ internal sealed partial class NetworkManager
     private void ResetSteamTransportState()
     {
         _ropeCreationBudget.Clear();
+        RopeOrder.Clear();
         ResetExtensionApi();
         CloseLobbyTransport();
         _steamTransportActive = false;

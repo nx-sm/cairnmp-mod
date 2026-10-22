@@ -160,6 +160,62 @@ public sealed class PitonSyncTests
     }
 
     [Fact]
+    public void AfterACheckpointReloadOurLostPitonsArePutBackNotWithdrawn()
+    {
+        var sync = Started(out var t);
+        sync.RestoreOwnAfterReload = true;
+        var announced = sync.Reconcile(Placed((1, A), (2, B)), null, t += Settled).Announce;
+        foreach (var (localId, pointer) in announced)
+            sync.Described(localId, Piton(localId, pointer == new IntPtr(1) ? A : B));
+        var lost = announced.Find(entry => entry.Pointer == new IntPtr(2)).LocalId;
+
+        sync.OnLifeline(ReloadedLifeline, t += 1);
+        sync.Reconcile(Placed((11, A)), null, t);
+        var actions = sync.Reconcile(Placed((11, A)), null, t += Settled);
+
+        Assert.Empty(actions.Removed);
+        Assert.Equal(lost, Assert.Single(actions.Restore).PitonId);
+
+        // Put back by the native side: recognised by its place, never announced a second time.
+        actions = sync.Reconcile(Placed((11, A), (12, B)), null, t += 0.1);
+        Assert.True(actions.IsEmpty);
+
+        // Taken out later, it is withdrawn under the id the others know it by.
+        Assert.Equal(new[] { lost }, sync.Reconcile(Placed((11, A)), null, t + 0.1).Removed);
+    }
+
+    [Fact]
+    public void APitonThatCannotBePutBackIsWithdrawnAfterAll()
+    {
+        var sync = Started(out var t);
+        sync.RestoreOwnAfterReload = true;
+        var id = sync.Reconcile(Placed((1, A)), null, t += Settled).Announce[0].LocalId;
+        sync.Described(id, Piton(id, A));
+
+        sync.OnLifeline(ReloadedLifeline, t += 1);
+        sync.Reconcile(Placed(), null, t);
+        Assert.Single(sync.Reconcile(Placed(), null, t += Settled).Restore);
+        sync.RestoreFailed(id);
+
+        Assert.Equal(new[] { id }, sync.Reconcile(Placed(), null, t + 0.1).Removed);
+    }
+
+    [Fact]
+    public void APitonWeKnowNothingAboutCannotBePutBack()
+    {
+        var sync = Started(out var t);
+        sync.RestoreOwnAfterReload = true;
+        var id = sync.Reconcile(Placed((1, A)), null, t += Settled).Announce[0].LocalId;
+
+        sync.OnLifeline(ReloadedLifeline, t += 1);
+        sync.Reconcile(Placed(), null, t);
+        var actions = sync.Reconcile(Placed(), null, t + Settled);
+
+        Assert.Empty(actions.Restore);
+        Assert.Equal(new[] { id }, actions.Removed);
+    }
+
+    [Fact]
     public void AfterAReloadSavedCopiesOfOthersPitonsAreNotDuplicated()
     {
         var sync = WithLiveRemote(out var t);

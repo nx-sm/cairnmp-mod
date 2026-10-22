@@ -887,14 +887,40 @@ public sealed class GameplayRegressionTests
     }
 
     [Fact]
-    public void APartnerComingOffTheWallShakesTheRopeTeam()
+    public void OutsideTheRopeTeamAPartnerComingOffTheWallShakesYou()
+    {
+        var (runtime, host, game) = Create(new RopeShakeFeature(), MultiplayerMode.Race);
+        game.PlayersImpl.Roped.Add(2);
+
+        runtime.ExecuteHostCommand(2, Command("rope-shake.fell", new PartnerFell()));
+
+        Assert.Equal(1, game.PlayersImpl.Shaken);
+    }
+
+    [Fact]
+    public void InTheRopeTeamAPartnersFallIsHeldNotFelt()
     {
         var (runtime, host, game) = Create(new RopeShakeFeature());
         game.PlayersImpl.Roped.Add(2);
 
         runtime.ExecuteHostCommand(2, Command("rope-shake.fell", new PartnerFell()));
 
-        Assert.Equal(1, game.PlayersImpl.Shaken);
+        Assert.Equal(0, game.PlayersImpl.Shaken);
+    }
+
+    [Theory]
+    [InlineData(MultiplayerMode.Race, true)]
+    [InlineData(MultiplayerMode.RopeTeam, false)]
+    public void OnlyOutsideTheRopeTeamDoesOurFallReachThePartner(MultiplayerMode mode, bool sent)
+    {
+        // A guest: its broadcast goes to the host as a command, which the bridge records.
+        var bridge = new Bridge(isHost: false);
+        var (_, host, game) = Create(new RopeShakeFeature(), mode, bridge);
+        game.PlayersImpl.Falling = true;
+
+        host.Tick(FeaturePhase.Gameplay);
+
+        Assert.Equal(sent, bridge.Commands.Contains("rope-shake.fell"));
     }
 
     [Fact]
@@ -1021,9 +1047,9 @@ public sealed class GameplayRegressionTests
     }
 
     [Fact]
-    public void APartnerHangingOnYourRopeIsWeightYouCarry()
+    public void OutsideTheRopeTeamAPartnerHangingOnYourRopeIsWeightYouCarry()
     {
-        var (runtime, host, game) = Create(new ReviveFeature());
+        var (runtime, host, game) = Create(new ReviveFeature(), MultiplayerMode.Race);
         game.PlayersImpl.InGame = new[] { 2 };
         game.PlayersImpl.Roped.Add(2);
         runtime.ExecuteHostCommand(2, Command("revive.downed", new DownedChanged(true)));
@@ -1032,6 +1058,56 @@ public sealed class GameplayRegressionTests
 
         // Two per second, one carried partner, one second of frame time.
         Assert.Equal(2f, game.LifeImpl.Exhausted);
+    }
+
+    [Fact]
+    public void InTheRopeTeamADownedPartnerCostsTheAnchorNothing()
+    {
+        var (runtime, host, game) = Create(new ReviveFeature());
+        game.PlayersImpl.InGame = new[] { 2 };
+        game.PlayersImpl.Roped.Add(2);
+        runtime.ExecuteHostCommand(2, Command("revive.downed", new DownedChanged(true)));
+
+        host.Tick(FeaturePhase.Always);
+
+        Assert.Equal(0f, game.LifeImpl.Exhausted);
+    }
+
+    [Fact]
+    public void ADeathThatPlaysOutHandsTheRopeToTheSurvivor()
+    {
+        var (runtime, _, game) = Create(new ReviveFeature());
+
+        runtime.ExecuteHostCommand(2, Command("revive.downed", new DownedChanged(ClimberCondition.Out)));
+
+        Assert.Equal(new[] { 2 }, game.PlayersImpl.YieldedLead);
+    }
+
+    [Fact]
+    public void OutsideTheRopeTeamADeathChangesNoRope()
+    {
+        var (runtime, _, game) = Create(new ReviveFeature(), MultiplayerMode.Race);
+
+        runtime.ExecuteHostCommand(2, Command("revive.downed", new DownedChanged(ClimberCondition.Out)));
+
+        Assert.Empty(game.PlayersImpl.YieldedLead);
+    }
+
+    [Fact]
+    public void OnlyTheHostDecidesWhoLeads()
+    {
+        var (runtime, _, game) = Create(new ReviveFeature(), bridge: new Bridge(isHost: false));
+
+        runtime.ApplyState(new ServerExtensionState
+        {
+            ExtensionId = FeatureHost.CoreExtensionId,
+            StateId = "revive.conditions",
+            ScopePlayerId = 2,
+            Revision = 1,
+            Payload = Bytes(new DownedChanged(ClimberCondition.Out)),
+        });
+
+        Assert.Empty(game.PlayersImpl.YieldedLead);
     }
 
     [Fact]
@@ -1500,6 +1576,8 @@ public sealed class GameplayRegressionTests
         public bool IsLocalPlayerFalling => Falling;
         public bool IsRopedToLocalPlayer(int playerId) => Roped.Contains(playerId);
         public bool ShakeLocalClimberGrip() { Shaken++; return true; }
+        internal readonly List<int> YieldedLead = new();
+        public void YieldRopeLead(int playerId) => YieldedLead.Add(playerId);
         public void ResetAppearanceCaches() { }
     }
 

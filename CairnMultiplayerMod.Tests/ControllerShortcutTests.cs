@@ -25,6 +25,7 @@ public sealed class ControllerShortcutTests
     [InlineData((int)ControllerShortcut.PlacePing, (int)ControllerButton.RightShoulder)]
     [InlineData((int)ControllerShortcut.PushToTalk, (int)ControllerButton.LeftShoulder)]
     [InlineData((int)ControllerShortcut.Panic, (int)ControllerButton.RightStick)]
+    [InlineData((int)ControllerShortcut.TakeUpPiton, (int)ControllerButton.DpadDown)]
     public void GameplayShortcutsKeepTheDocumentedLayout(int shortcut, int expected)
         => Assert.Equal((ControllerButton)expected,
             ControllerShortcutBindings.ButtonFor((ControllerShortcut)shortcut));

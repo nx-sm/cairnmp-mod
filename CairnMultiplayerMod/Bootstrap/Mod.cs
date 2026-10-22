@@ -144,7 +144,12 @@ public partial class Mod : MelonMod
     {
         _connectKey = ParseKey(ModConfig.ConnectKey.Value, Key.F5);
         _disconnectKey = ParseKey(ModConfig.DisconnectKey.Value, Key.F6);
-        Network = new NetworkManager(RopeLinkState.Links);
+        Network = new NetworkManager(RopeLinkState.Links)
+        {
+            LeadAndFollow = () => _runtimeState.ModeRules.LeadAndFollow,
+            KeepPitonsOfLeavers = () => _runtimeState.ModeRules.LeadAndFollow,
+            PlayerPosition = PositionOf,
+        };
         Lobby = new LobbyRouter(new DirectLobby(new DirectLobbySettings
         {
             Port = () => ModConfig.DirectPort.Value,
@@ -170,13 +175,34 @@ public partial class Mod : MelonMod
             new WeatherAdapter(),
             new WorldAdapter(), _voice, new LifeAdapter(), new SpectatorAdapter());
 
-        Rope = new RopeCoupleController(Network, _runtimeState);
+        Rope = new RopeCoupleController(Network, _runtimeState,
+            text => _hud.ShowMessage("rope.notice", text, 3f));
+        // Only a run started or continued from a lobby is played under its rules.
+        GameSetupConstraintsPatch.Extra = () => Lobby != null && Lobby.IsInLobby
+            ? _runtimeState.ModeRules.ExtraConstraints
+            : ClimbConstraints.None;
         Player = new PlayerStateBroadcaster(
             Network, _runtimeState, Rope.Reset, () => Bivouac?.BlocksGameplaySync() == true,
             isSpeaking: playerId => _voice?.IsSpeaking(playerId) == true);
         StartGame = new StartGameFlow(_panel, _mainMenu.RestoreMainMenuInput, _runtimeState);
         Bivouac = new BivouacSyncGate(
             Network, _panel, _runtimeState, ResetSyncTimers, ResetSceneBoundSyncState, SetLocalState);
+    }
+
+    /// <summary>Where a climber stands on the face, for the host's rope decisions.</summary>
+    private System.Numerics.Vector3? PositionOf(int playerId)
+    {
+        if (Network == null) return null;
+        if (playerId == Network.LocalPlayerId)
+        {
+            if (LocalState != PlayerState.InGame || !LocalPlayerInterop.TryGetPose(out var pose, out _))
+                return null;
+            return new System.Numerics.Vector3(pose.x, pose.y, pose.z);
+        }
+        return Network.RemotePlayers.TryGetValue(playerId, out var remote)
+               && remote != null && remote.State == PlayerState.InGame
+            ? new System.Numerics.Vector3(remote.X, remote.Y, remote.Z)
+            : null;
     }
 
     private void WireLobbyEvents()

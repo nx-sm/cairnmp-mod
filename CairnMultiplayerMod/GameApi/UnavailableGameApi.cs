@@ -150,6 +150,7 @@ internal sealed class UnavailableGameApi : IGameApi
         public bool IsLocalPlayerFalling => false;
         public bool IsRopedToLocalPlayer(int playerId) => false;
         public bool ShakeLocalClimberGrip() => false;
+        public void YieldRopeLead(int playerId) { }
         public void ResetAppearanceCaches() { }
     }
 

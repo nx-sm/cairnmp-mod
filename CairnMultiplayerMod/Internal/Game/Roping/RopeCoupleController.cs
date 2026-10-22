@@ -21,23 +21,37 @@ internal sealed class RopeCoupleController
     internal const string ToggleKeyName = "L";
     private static readonly Key ToggleKey = System.Enum.Parse<Key>(ToggleKeyName);
 
+    internal const string TakeUpPitonKeyName = "T";
+    private static readonly Key TakeUpPitonKey = System.Enum.Parse<Key>(TakeUpPitonKeyName);
+
+    /// <summary>Used when the game's netplay tweakables are not loaded yet.</summary>
+    private const float FallbackTakeUpReachMeters = 2.5f;
+
+    private const float NoticeSeconds = 3f;
+
     private readonly NetworkManager _network;
     private readonly RuntimeState _state;
+    private readonly System.Action<string> _notify;
 
     // Hard teardown is broadcast once per episode to avoid reliable-packet spam.
     private bool _ropeHardTornDown;
     private float _deadSince = -1f;
 
-    internal RopeCoupleController(NetworkManager network, RuntimeState state)
+    internal RopeCoupleController(NetworkManager network, RuntimeState state, System.Action<string> notify = null)
     {
         _network = network;
         _state = state ?? throw new System.ArgumentNullException(nameof(state));
+        _notify = notify ?? (_ => { });
     }
+
+    private bool LeadAndFollow => _state.ModeRules.LeadAndFollow;
 
     internal void Tick()
     {
         if (_network == null)
             return;
+
+        ApplyModeRules();
 
         // Teardown must remain reachable outside InGame.
         if (!TickRopeSafety()) return;
@@ -46,8 +60,51 @@ internal sealed class RopeCoupleController
             return;
 
         if (!InputCaptureState.IsKeyboardCaptured)
+        {
             HandleRopeClipInput();
+            HandlePitonTakeUpInput();
+        }
         TickRopeTeam();
+    }
+
+    /// <summary>
+    /// The piton rules follow the session: playing without the Climbot is no reason to refuse
+    /// a piton, and a follower leaves the pitons to the leader. Outside a session the game
+    /// decides alone.
+    /// </summary>
+    private void ApplyModeRules()
+    {
+        var inSession = _network.IsConnected && _network.IsHandshakeComplete;
+        var rules = _state.ModeRules;
+        var withoutClimbot = inSession
+            && (rules.ExtraConstraints & CairnMultiplayer.Shared.ClimbConstraints.NoClimbot) != 0;
+        var follower = inSession && rules.LeadAndFollow && RopeLinkState.IsLast(_network.LocalPlayerId);
+        PitonRulesPatch.Update(withoutClimbot, follower);
+        RopeInterop.RestoreOwnPitonsAfterReload = inSession && rules.LeadAndFollow;
+    }
+
+    /// <summary>
+    /// The climbers carry the gear now: the last one on the rope takes the pitons out by hand.
+    /// A climber on their own does both jobs, so they may take out any piton within reach.
+    /// </summary>
+    private void HandlePitonTakeUpInput()
+    {
+        if (!LeadAndFollow) return;
+        var keyboard = Keyboard.current;
+        var pressed = keyboard != null && keyboard[TakeUpPitonKey].wasPressedThisFrame;
+        if (!pressed && !ModControllerInput.WasPressed(ControllerShortcut.TakeUpPiton))
+            return;
+
+        if (RopeLinkState.IsLeader(_network.LocalPlayerId))
+        {
+            _notify("You lead the rope: the last climber takes the pitons out.");
+            return;
+        }
+        if (!LocalPlayerInterop.TryGetPose(out var localPos, out _)) return;
+
+        var refusal = RopeInterop.TryTakeUpClosestPiton(localPos,
+            RopeInterop.PitonTakeUpReachMeters(FallbackTakeUpReachMeters));
+        _notify(refusal ?? "Piton taken out and stowed.");
     }
 
     /// <summary>

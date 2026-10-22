@@ -37,6 +37,12 @@ internal interface IPlayersApi
     bool IsRopedToLocalPlayer(int playerId);
 
     /// <summary>
+    /// Host only: that climber's next rope is led by the other climber, whatever their
+    /// heights. Settled once the two are tied in.
+    /// </summary>
+    void YieldRopeLead(int playerId);
+
+    /// <summary>
     /// Shakes the local climber's holds loose, the way the game does when a roped partner
     /// falls. A firm hold resists it. Returns whether anything actually let go.
     /// </summary>

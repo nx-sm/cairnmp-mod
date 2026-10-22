@@ -118,15 +118,33 @@ internal sealed class PitonAuthority
         _recoveryBudget.Clear();
     }
 
-    internal void RemovePlayer(int playerId)
+    /// <param name="keepPitons">The climber's pitons stay on the wall for the others, who
+    /// can still take them out: a rope left behind is something to climb back up on.</param>
+    internal void RemovePlayer(int playerId, bool keepPitons = false)
     {
         var ids = new List<uint>();
         foreach (var key in _authIdByClient.Keys)
             if (key.playerId == playerId) ids.Add(key.clientId);
-        foreach (var id in ids) Remove(playerId, id, despawnLocalGhost: true, exceptPlayerId: playerId);
+
+        foreach (var id in ids)
+        {
+            if (!keepPitons)
+            {
+                Remove(playerId, id, despawnLocalGhost: true, exceptPlayerId: playerId);
+                continue;
+            }
+            // Handed to nobody: a climber who comes back may get the same player id and count
+            // their pitons from 1 again, which must not collide with the ones left behind.
+            var authId = _authIdByClient[(playerId, id)];
+            _authIdByClient.Remove((playerId, id));
+            _authIdByClient[(OrphanOwner, authId)] = authId;
+        }
         _placementBudget.Remove(playerId);
         _recoveryBudget.Remove(playerId);
     }
+
+    /// <summary>Owner of pitons whose climber left. No player has this id.</summary>
+    internal const int OrphanOwner = 0;
 
 
     private void Place(int playerId, uint clientId, ServerPitonPlaced fields, bool spawnLocalGhost, int exceptPlayerId)
@@ -196,7 +214,8 @@ internal sealed class PitonAuthority
         }
 
         _sink.Broadcast(PacketId.ServerPitonRemoved, removed, requesterId, NetReliability.ReliableOrdered);
-        if (!hostOwned)
+        // Left behind by a climber who is gone: nobody to tell it was theirs.
+        if (!hostOwned && owner.playerId != OrphanOwner)
             _sink.SendTo(owner.playerId, PacketId.ServerPitonRecovered,
                 new ServerPitonRecovered { ByPlayerId = requesterId, PitonId = owner.clientId },
                 NetReliability.ReliableOrdered);

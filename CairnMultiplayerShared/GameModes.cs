@@ -43,7 +43,8 @@ public readonly struct MultiplayerModeRules
 {
     public MultiplayerModeRules(MultiplayerMode mode, string name, string summary,
         GameDifficulty difficulty, ClimbConstraints extraConstraints,
-        bool teammateRevive, bool bivouacRevive, bool spectateAfterDeath)
+        bool teammateRevive, bool bivouacRevive, bool spectateAfterDeath,
+        bool leadAndFollow = false)
     {
         Mode = mode;
         Name = name ?? "";
@@ -53,6 +54,7 @@ public readonly struct MultiplayerModeRules
         TeammateRevive = teammateRevive;
         BivouacRevive = bivouacRevive;
         SpectateAfterDeath = spectateAfterDeath;
+        LeadAndFollow = leadAndFollow;
     }
 
     public MultiplayerMode Mode { get; }
@@ -75,6 +77,14 @@ public readonly struct MultiplayerModeRules
 
     /// <summary>A player with no way back watches the climb instead of ending their session.</summary>
     public bool SpectateAfterDeath { get; }
+
+    /// <summary>
+    /// A rope has a leader and a last climber, and the climbers carry the gear themselves:
+    /// the leader places the pitons, the last climber takes them out. A fall never pulls the
+    /// partner off — they hold it like a piton that cannot fail — and pitons stay on the wall
+    /// for whoever climbs back up after a death.
+    /// </summary>
+    public bool LeadAndFollow { get; }
 }
 
 /// <summary>The modes CairnMP ships, and the only place their rules are written down.</summary>
@@ -83,12 +93,13 @@ public static class MultiplayerModes
     public static readonly MultiplayerModeRules RopeTeam = new(
         MultiplayerMode.RopeTeam,
         "Rope team",
-        "Climb roped together. A downed partner can be brought back on the spot.",
+        "Climb roped together, no Climbot. The leader places pitons, the last climber takes them out.",
         GameDifficulty.Alpinist,
-        ClimbConstraints.None,
+        ClimbConstraints.NoClimbot,
         teammateRevive: true,
         bivouacRevive: true,
-        spectateAfterDeath: false);
+        spectateAfterDeath: false,
+        leadAndFollow: true);
 
     public static readonly MultiplayerModeRules FreeSolo = new(
         MultiplayerMode.FreeSolo,
@@ -147,9 +158,10 @@ public static class MultiplayerModeText
     /// <summary>What the mode promises a climber who falls, in reading order.</summary>
     public static IReadOnlyList<string> Promises(MultiplayerModeRules rules)
     {
-        var promises = new List<string>(3);
+        var promises = new List<string>(4);
         if (rules.TeammateRevive) promises.Add("Rescue on the face");
         if (rules.BivouacRevive) promises.Add("Brought back at camp");
+        if (rules.LeadAndFollow) promises.Add("Back from the last checkpoint");
         if (rules.SpectateAfterDeath) promises.Add("Watch after death");
         return promises;
     }

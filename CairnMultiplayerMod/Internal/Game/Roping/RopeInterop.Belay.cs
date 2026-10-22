@@ -36,6 +36,9 @@ internal static partial class RopeInterop
                     var climbot = ResolveLocalClimbot();
                     source = climbot != null ? climbot.GetRope() : null;
                 }
+                // Without the Climbot there may be neither: any rope in the scene still
+                // carries the segment prefab and settings a new one is cloned from.
+                source ??= ResolveRopeTemplate();
                 if (source == null || source.ropePartPrefab == null) return true;
                 if (!TryGetHarnessAttachPosition(local, out var a) || !TryGetHarnessAttachPosition(partner, out var b)) return true;
                 var length = source.MaxLengthMeters;
@@ -90,6 +93,38 @@ internal static partial class RopeInterop
         _lastClimbotSearchFrame = Time.frameCount;
         var all = Object.FindObjectsOfType<Il2CppTheGameBakers.Cairn.RobotPawnController>();
         if (all != null) foreach (var robot in all) if (robot != null) return _localClimbotCached = robot;
+        return null;
+    }
+
+    private static LogicalRope _ropeTemplateCached;
+    private static int _lastRopeTemplateSearchFrame;
+
+    /// <summary>
+    /// A rope to copy segments and settings from when the climber has no personal rope and
+    /// no Climbot. Only read, never attached to: the direct rope clones its prefab.
+    /// </summary>
+    private static LogicalRope ResolveRopeTemplate()
+    {
+        if (_ropeTemplateCached != null && _ropeTemplateCached.ropePartPrefab != null) return _ropeTemplateCached;
+        _ropeTemplateCached = null;
+        if (_lastRopeTemplateSearchFrame != 0 && Time.frameCount - _lastRopeTemplateSearchFrame < 30) return null;
+        _lastRopeTemplateSearchFrame = Time.frameCount;
+        try
+        {
+            var all = Object.FindObjectsOfType<LogicalRope>();
+            if (all == null) return null;
+            foreach (var rope in all)
+            {
+                if (rope == null || rope.ropePartPrefab == null) continue;
+                if (_ropeBinding?.Owns(rope) == true) continue;
+                ModLog.Debug("[RopeTeam] Using '" + rope.gameObject.name + "' as the rope template");
+                return _ropeTemplateCached = rope;
+            }
+        }
+        catch (Exception exception)
+        {
+            ModLog.SuppressedException("rope.resolve-template", exception);
+        }
         return null;
     }
 
