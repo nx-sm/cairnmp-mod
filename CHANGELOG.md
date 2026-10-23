@@ -13,6 +13,7 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.6.3](#263--2026-10-23-beta) | 2026-10-23 | Beta | View + RB shows the climb trails; LT/RT pings in every view |
 | [2.6.2](#262--2026-10-23-beta) | 2026-10-23 | Beta | View + button no longer sets off the game's own action |
 | [2.6.1](#261--2026-10-23-beta) | 2026-10-23 | Beta | Every player picks their own slot; the host's difficulty is shared |
 | [2.6.0](#260--2026-10-22-beta) | 2026-10-22 | Beta | Co-op saves apart from single-player; joiners start with the host |
@@ -46,6 +47,27 @@ All notable CairnMP changes are documented here. Releases follow
 | [1.1.0](#110--2026-08-02) | 2026-08-02 | Stable | Managed extension API and diagnostics |
 | [1.0.0](#100--2026-07-11) | 2026-07-11 | Stable | First stable release |
 | [0.1.37](#0137--2026-07-09-beta) | 2026-07-09 | Beta | Multiplayer save and piton fixes |
+
+---
+
+## [2.6.3] — 2026-10-23 (beta)
+
+> This beta uses protocol **17**, like 2.6.2. Every player in a lobby must run CairnMP
+> 2.6.3.
+
+### Changed
+
+- **View + RB** shows or hides the climb trails — a line along each climber's recent
+  route — like `T` and `/trails`. The trails are recorded all along, so showing them
+  reveals where everyone has been. They had no controller button, which made them look
+  gone on a controller.
+- **View + LT** pings where you aim and **View + RT** clears every ping, the same in
+  normal play, the Eagle Eye view and spectating. The controller's separate Eagle Eye
+  ping on RB is gone; the mouse click still places it. The messages say "Ping left" and
+  "Pings cleared".
+- Releases are published from the maintainer's machine with
+  `scripts/publish-release.ps1`, which builds against the local game files; the GitHub
+  release workflow is removed.
 
 ---
 
