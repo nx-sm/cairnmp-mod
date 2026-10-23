@@ -13,6 +13,8 @@ All notable CairnMP changes are documented here. Releases follow
 
 | Version | Date | Channel | Highlights |
 | --- | --- | --- | --- |
+| [2.6.2](#262--2026-10-23-beta) | 2026-10-23 | Beta | View + button no longer sets off the game's own action |
+| [2.6.1](#261--2026-10-23-beta) | 2026-10-23 | Beta | Every player picks their own slot; the host's difficulty is shared |
 | [2.6.0](#260--2026-10-22-beta) | 2026-10-22 | Beta | Co-op saves apart from single-player; joiners start with the host |
 | [2.5.4](#254--2026-10-22-beta) | 2026-10-22 | Beta | Lobby launches can no longer overwrite a co-op run |
 | [2.5.3](#253--2026-10-22-beta) | 2026-10-22 | Beta | Partner holds falls, saves read from disk, no View freeze |
@@ -44,6 +46,60 @@ All notable CairnMP changes are documented here. Releases follow
 | [1.1.0](#110--2026-08-02) | 2026-08-02 | Stable | Managed extension API and diagnostics |
 | [1.0.0](#100--2026-07-11) | 2026-07-11 | Stable | First stable release |
 | [0.1.37](#0137--2026-07-09-beta) | 2026-07-09 | Beta | Multiplayer save and piton fixes |
+
+---
+
+## [2.6.2] — 2026-10-23 (beta)
+
+> This beta uses protocol **17**, like 2.6.1. Every player in a lobby must run CairnMP
+> 2.6.2.
+
+### Fixed
+
+- Holding **View** now switches off the game's own actions on every button a CairnMP
+  shortcut uses, until it is released. View + `Y` ties the rope without also whistling
+  for the Climbot, and View + `LB`, `RB`, `A`, `X`, `B`, the D-pad, the triggers, Menu
+  and the right-stick click no longer set off observation, piton collection, jumping,
+  grabbing, inventory moves, hang mode, pause or rewind alongside the shortcut. The
+  game's own input switch did not reach all of them. The sticks keep working, and an
+  action already held when View goes down (hang mode on `RT`) carries on.
+
+### Changed
+
+- The controller table tells a ping from a trail mark: View + `LT` leaves a lasting
+  trail mark and View + `RT` clears them; View + `RB` places a 15-second ping, from the
+  Eagle Eye view or while spectating only.
+
+---
+
+## [2.6.1] — 2026-10-23 (beta)
+
+> This beta uses protocol **17**, like 2.6.0. Every player in a lobby must run CairnMP
+> 2.6.1.
+
+### Changed
+
+- Every player chooses their own save slot on the game's save screen; 2.6.0 picked
+  slot **L** for everyone and skipped the host's choice. Slots are not synced, so the
+  rope team agrees on which ones to load — everyone still shares the same world.
+- The host chooses first: an existing slot loads as saved, with its own difficulty and
+  no difficulty screen; an empty slot goes through New Game, where only the host sets
+  the difficulty. Joining players wait in the lobby until the host's game launches.
+- A joining player's existing slot loads straight into the game; an empty slot skips
+  the difficulty, customization and tutorial screens and starts at once with the host's
+  settings.
+
+### Fixed
+
+- When the host continues a saved run, joining players who start a new slot get that
+  run's difficulty, read from the loaded save, instead of the mode's default. The host's
+  launch is announced once its game is loaded, so joiners start after the host is in.
+
+### Removed
+
+- The automatic continue / new-game in slot L for joining players, which the slot choice
+  replaces. Save backups at launch and the guard keeping a new game out of a slot that
+  holds a save stay.
 
 ---
 
