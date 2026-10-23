@@ -159,6 +159,34 @@ internal static unsafe class GameOptionsInterop
     }
 
     /// <summary>
+    /// The difficulty of the run being played, as its save holds it: Cairn keeps the loaded
+    /// save's setup as the current GameSetup. False until a run is loaded. Assist is not part
+    /// of the setup, so the caller's value is kept.
+    /// </summary>
+    public static bool TryReadCurrentRunSettings(ref ServerHostGameSettings settings)
+    {
+        try
+        {
+            var setup = GameSetup.GetCurrentGameSetup();
+            if (setup == null || setup.difficulty == DifficultyTweakables.SelectedDifficulty.Invalid)
+                return false;
+            settings.Difficulty = (int)setup.difficulty;
+            // The effective values, whether the difficulty's own or customized.
+            settings.ClimbingPackage = (int)setup.ClimbingPackage;
+            settings.SurvivalPackage = (int)setup.SurvivalPackage;
+            settings.Constraints = (int)setup.Constraints;
+            settings.CustomizedValid = setup.customDifficultyData.isValid;
+            settings.Character = (int)setup.character;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ModLog.Warning($"[GameOptions] Could not read the loaded run's setup: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Writes the host's choices into this player's next new game, tutorials always skipped.
     /// Re-applied every frame like the mode, because the native flow rewrites the options.
     /// </summary>

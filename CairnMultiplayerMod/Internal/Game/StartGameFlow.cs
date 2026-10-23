@@ -3,6 +3,7 @@ using CairnMultiplayer.Shared;
 using CairnMultiplayerMod.Internal.Diagnostics;
 using CairnMultiplayerMod.Internal.Game.MainMenu;
 using CairnMultiplayerMod.Internal.UI;
+using Il2Cpp;
 using UnityEngine;
 
 namespace CairnMultiplayerMod.Internal.Game;
@@ -81,6 +82,7 @@ internal sealed class StartGameFlow
     {
         _hostStart = start;
         _hostAnnounced = false;
+        _continuedRunSettings = null;
         BeginLaunch(start);
     }
 
@@ -96,8 +98,7 @@ internal sealed class StartGameFlow
         _pendingStartRetries = 0;
         _pendingStartRetryTimer = 0f;
         _coopSavePending = false;
-        _resumeStage = 0;
-        _resumeFailed = false;
+        _continuedRunSettings = null;
     }
 
     /// <summary>
@@ -153,11 +154,18 @@ internal sealed class StartGameFlow
             }
             else
             {
-                // Left the menu without a new game: the host continued its saved run.
-                if (_isHost()) Announce(newGame: false);
+                // Left the menu without a new game: the host continued its saved run. Its
+                // difficulty is the save's, readable once the run is loaded.
+                if (_isHost() && !_hostAnnounced)
+                {
+                    GameOptionsInterop.TryReadNextGameOptions(out var menuSettings);
+                    _continuedRunSettings = menuSettings;
+                }
                 _forceNewGameOpts = null;
             }
         }
+
+        TickContinuedRunAnnounce();
 
         if (_pendingStart.HasValue && SceneRoles.IsMainMenuArea(currentScene))
         {
@@ -184,7 +192,6 @@ internal sealed class StartGameFlow
                         CoopSkipsTutorials, CoopSkipsTutorials, start.AssistEnabled);
                 }
                 _skippedQuestions = false;
-                _resumeFailed = false;
                 _state.ModeRules = rules;
 
                 _forceNewGameOpts = start;
@@ -196,7 +203,7 @@ internal sealed class StartGameFlow
                 _pendingStartRetries = 0;
                 _pendingStartRetryTimer = 0f;
                 _waitingNoticeShown = false;
-                // Every co-op launch, host or joiner, any mode, uses the co-op slot and only it.
+                // Every player picks their own slot, once the save screen is up.
                 _coopSavePending = true;
                 _coopSaveWaited = 0f;
                 _panel.Hide();
@@ -217,12 +224,42 @@ internal sealed class StartGameFlow
         Announce(newGame: true);
     }
 
+    // The host continued a run: what its menu held, until the loaded run's own setup replaces it.
+    private ServerHostGameSettings? _continuedRunSettings;
+
+    /// <summary>
+    /// The host continued a saved run: once it is in the game, the run's own difficulty goes to
+    /// everyone, so a joiner starting a new slot plays the host's run's difficulty, not the
+    /// mode's default. The joiners stay in the lobby until then.
+    /// </summary>
+    private void TickContinuedRunAnnounce()
+    {
+        if (!_continuedRunSettings.HasValue) return;
+        if (_hostAnnounced || !_isHost())
+        {
+            _continuedRunSettings = null;
+            return;
+        }
+        if (_state.LocalPlayerState != PlayerState.InGame) return;
+
+        var settings = _continuedRunSettings.Value;
+        _continuedRunSettings = null;
+        if (GameOptionsInterop.TryReadCurrentRunSettings(ref settings))
+            ModLog.Info($"[StartGame] The host's run is {(DifficultyTweakables.SelectedDifficulty)settings.Difficulty}: " +
+                        "that difficulty goes to everyone");
+        else
+            ModLog.Warning("[StartGame] Could not read the host's run difficulty; joiners' new runs use the mode's");
+        Announce(newGame: false, settings);
+    }
+
     /// <summary>Starts everyone else's game, once, with what the host's own game launched with.</summary>
-    private void Announce(bool newGame)
+    private void Announce(bool newGame) => Announce(newGame,
+        GameOptionsInterop.TryReadNextGameOptions(out var settings) ? settings : default);
+
+    private void Announce(bool newGame, ServerHostGameSettings settings)
     {
         if (_hostAnnounced) return;
         _hostAnnounced = true;
-        GameOptionsInterop.TryReadNextGameOptions(out var settings);
         settings.NewGame = newGame;
         _announceLaunch(_hostStart, settings);
         ModLog.Info(newGame
@@ -253,10 +290,8 @@ internal sealed class StartGameFlow
         // Cairn writes it into the active slot, and the game cannot see co-op saves to warn.
         if (CoopSaveInterop.ActiveSlotHoldsASave()) CoopSaveInterop.PointAtFreeSlot();
 
-        // Only a joiner's launch meant to start a new run skips the questions: the host
-        // answers them, and one that was continuing a run, and failed, leaves the player in
-        // charge of the screens.
-        if (_isHost() || _skippedQuestions || _resumeFailed || _resumeStage > 0
+        // Only a joiner's new run skips the questions: the host answers them.
+        if (_isHost() || _skippedQuestions
             || step == MainMenuInterop.MainMenuStep.LaunchNewStoryGame) return;
 
         // Not before the host has chosen: the joiner waits on the difficulty screen.
@@ -277,13 +312,12 @@ internal sealed class StartGameFlow
     }
 
     /// <summary>
-    /// A rope team continues its own run: once the save screen is up, the remembered slot is
-    /// loaded, or a new game is started in a free one. Anything that does not work out leaves
-    /// the screen to the player, exactly as before.
+    /// Every player chooses their own slot on the save screen; slots are not synced, so the
+    /// rope team agrees on them. A loaded slot plays as saved. A new slot is the host's to set
+    /// up: a joiner's skips the difficulty screens and launches with the host's settings.
     /// </summary>
     private void TickCoopSave(string currentScene)
     {
-        TickResumeWatch(currentScene);
         if (!_coopSavePending) return;
         if (!SceneRoles.IsMainMenuArea(currentScene))
         {
@@ -300,14 +334,13 @@ internal sealed class StartGameFlow
         }
         if (!CoopSaveInterop.TryGetReadySaveScreen(out var screen)) return;
 
-        // A joiner follows the host: a new run if the host started one, its own copy of the
-        // run if the host continued. The host's word travels with the start; give it a moment.
+        // The host's settings travel just ahead of the start; give them a moment.
         if (!_isHost() && !_hostSettings.HasValue && _coopSaveWaited < HostSettingsWaitSeconds)
         {
             if (!_waitingNoticeShown)
             {
                 _waitingNoticeShown = true;
-                _panel.SetStatus("Waiting for the host's game to start...", true);
+                _panel.SetStatus("Waiting for the host's settings...", true);
             }
             return;
         }
@@ -316,104 +349,9 @@ internal sealed class StartGameFlow
         CoopSaveInterop.RememberSoloActiveSlots();
         CoopSaveInterop.BackupSaves();
         CoopSaveInterop.LogSaves(screen);
-        var plan = PlanForThisLaunch();
-        switch (plan.Action)
-        {
-            case CoopSaveAction.Resume:
-                // Watched either way: a "continue" that throws or quietly does nothing gets the
-                // direct load next, never a new game.
-                _resumeSlot = plan.Slot;
-                _resumeFailed = false;
-                if (CoopSaveInterop.Resume(screen, plan.Slot))
-                {
-                    _resumeStage = 1;
-                    _resumeWaited = 0f;
-                }
-                else ResumeDirectlyOrStop();
-                break;
-            case CoopSaveAction.NewGame:
-                // The co-op slot only ever holds the co-op run: the previous one is archived,
-                // single-player slots are never touched.
-                if (CoopSaveInterop.HasSave(plan.Slot)) CoopSaveInterop.ArchiveCoopSlot();
-                if (!CoopSaveInterop.StartNewGame(screen, plan.Slot))
-                    _panel.SetStatus("Could not start the co-op run in its own slot. Quit and send the log.", true);
-                break;
-            default:
-                _panel.SetStatus("Pick the save to play on the save screen.", true);
-                ModLog.Warning("[CoopSave] No save chosen automatically; leaving the choice to the player.");
-                break;
-        }
-    }
-
-    /// <summary>
-    /// What this launch does with the saves. The host's own rope-team launch continues its run
-    /// or starts one. A joiner starts a new run in a free slot when the host did, continues its
-    /// rope team's run when the host continued, and otherwise leaves the save screen to them.
-    /// </summary>
-    private CoopSavePlan PlanForThisLaunch()
-    {
-        const byte coopSlot = CoopSaveFiles.Slot;
-        var hostStartedANewRun = !_isHost() && _hostSettings?.NewGame == true;
-        if (!hostStartedANewRun && CoopSaveInterop.HasSave(coopSlot))
-            return CoopSavePlan.Decide(coopSlot, _ => true, null);
-        return CoopSavePlan.Decide(-1, _ => false, coopSlot);
-    }
-
-    /// <summary>How long a load may take to leave the menu before the next way is tried.</summary>
-    private const float ResumeStageSeconds = 5f;
-
-    private byte _resumeSlot;
-    private int _resumeStage;
-    private float _resumeWaited;
-    private bool _resumeFailed;
-
-    /// <summary>
-    /// Leaving the menu means the load took. Still there after a few seconds: the direct load,
-    /// then a plain message. Nothing in here ever starts a new game.
-    /// </summary>
-    private void TickResumeWatch(string currentScene)
-    {
-        if (_resumeStage == 0) return;
-        if (!SceneRoles.IsMainMenuArea(currentScene) || _state.LocalPlayerState == PlayerState.Loading)
-        {
-            _resumeStage = 0;
-            return;
-        }
-
-        _resumeWaited += Time.unscaledDeltaTime;
-        if (_resumeWaited < ResumeStageSeconds) return;
-
-        if (_resumeStage == 1)
-        {
-            ModLog.Warning($"[CoopSave] Still on the menu after continuing slot {CoopSaveInterop.Letter(_resumeSlot)}; loading it directly");
-            ResumeDirectlyOrStop();
-            return;
-        }
-        StopResuming();
-    }
-
-    private void ResumeDirectlyOrStop()
-    {
-        if (CoopSaveInterop.ResumeDirectly(_resumeSlot))
-        {
-            _resumeStage = 2;
-            _resumeWaited = 0f;
-            return;
-        }
-        StopResuming();
-    }
-
-    /// <summary>
-    /// The run could not be loaded. The game is pointed back at a free slot before anything
-    /// else can happen: a new game started from here can no longer land on the run.
-    /// </summary>
-    private void StopResuming()
-    {
-        _resumeStage = 0;
-        _resumeFailed = true;
-        CoopSaveInterop.PointAtFreeSlot();
-        var letter = CoopSaveInterop.Letter(_resumeSlot);
-        ModLog.Warning($"[CoopSave] Could not load the rope team's run in slot {letter}. Its save file is untouched.");
-        _panel.SetStatus($"Could not load your co-op save (slot {letter}). It is untouched; quit and send the log.", true);
+        _panel.SetStatus(_isHost()
+            ? "Choose a save to continue, or an empty slot for a new run."
+            : "Choose your save to continue, or an empty slot: the host's difficulty applies.", true);
+        ModLog.Info("[CoopSave] Save screen left to the player");
     }
 }

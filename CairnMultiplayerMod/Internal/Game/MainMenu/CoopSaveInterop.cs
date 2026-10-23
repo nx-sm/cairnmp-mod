@@ -8,8 +8,7 @@ using Il2CppTheGameBakers.Cairn.UI;
 namespace CairnMultiplayerMod.Internal.Game.MainMenu;
 
 /// <summary>
-/// Drives the game's own story save screen: continuing a slot, or starting a new game in a
-/// chosen one.
+/// Reads the game's story save slots, and keeps a new game out of a slot that holds a run.
 ///
 /// Whether a slot holds a save is read from the disk, not from the game's save list. A story
 /// run is written as a Summit save (SAVEGAMES/…/SUMMIT/SLOT_A.CPK), and on a machine where the
@@ -101,27 +100,6 @@ internal static class CoopSaveInterop
         {
             ModLog.Warning("[CoopSave] Could not prepare the co-op slot: " + exception.Message);
             return rememberedSlot;
-        }
-    }
-
-    /// <summary>
-    /// A new co-op run is about to start in slot L: the previous co-op run there goes to the
-    /// backup folder first. Single-player slots are never touched.
-    /// </summary>
-    internal static void ArchiveCoopSlot()
-    {
-        try
-        {
-            var root = SavesRoot();
-            if (root == null) return;
-            var archive = Path.Combine(root.FullName, "CairnMP-backups",
-                DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + "_previous-coop-run");
-            foreach (var build in CoopSaveFiles.BuildFolders(root))
-                CoopSaveFiles.Archive(build, CoopSaveFiles.Slot, archive, message => ModLog.Info(message));
-        }
-        catch (Exception exception)
-        {
-            ModLog.Warning("[CoopSave] Could not archive the previous co-op run: " + exception.Message);
         }
     }
 
@@ -314,73 +292,6 @@ internal static class CoopSaveInterop
         catch (Exception exception)
         {
             ModLog.SuppressedException("coop-save.log-saves", exception);
-        }
-    }
-
-    /// <summary>First try: the save screen's own "continue", on the remembered slot.</summary>
-    internal static bool Resume(MainMenuSaveManagementElement screen, byte slot)
-    {
-        try
-        {
-            foreach (var channel in Channels)
-                SavegameManager.Instance.ChangeActiveSlot(channel, slot);
-            screen.OnLoadGame(slot);
-            ModLog.Info($"[CoopSave] Continuing the rope team's run in slot {Letter(slot)}");
-            return true;
-        }
-        catch (Exception exception)
-        {
-            ModLog.Warning($"[CoopSave] The save screen could not continue slot {Letter(slot)}: {exception.Message}");
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Second try, when the screen did not start loading: what its "continue" does underneath —
-    /// make the slot active and load it — on the channel its file was written to, then walk the
-    /// menu into the saved game.
-    /// </summary>
-    internal static bool ResumeDirectly(byte slot)
-    {
-        try
-        {
-            var channel = SaveFile(slot)?.Directory?.Name == "STORY" ? SaveType.Story : SaveType.Summit;
-            foreach (var c in Channels)
-                SavegameManager.Instance.ChangeActiveSlot(c, slot);
-            SavegameManager.Instance.Load(channel, null, false, null);
-            MainMenuInterop.ForceMainMenuStep(MainMenuInterop.MainMenuStep.LaunchSavedGame);
-            ModLog.Info($"[CoopSave] Loading slot {Letter(slot)} directly ({channel} save)");
-            return true;
-        }
-        catch (Exception exception)
-        {
-            ModLog.Warning($"[CoopSave] Could not load slot {Letter(slot)} directly: {exception.Message}");
-            return false;
-        }
-    }
-
-    /// <summary>The game starts a new story in the active slot, and writes it through the Summit
-    /// channel's active slot: both must point at the free one first.</summary>
-    internal static bool StartNewGame(MainMenuSaveManagementElement screen, byte slot)
-    {
-        if (SaveFile(slot) != null)
-        {
-            // Never: whatever decided this, a slot with a save file is not free.
-            ModLog.Warning($"[CoopSave] Refused to start a new game over the save in slot {Letter(slot)}");
-            return false;
-        }
-        try
-        {
-            foreach (var channel in Channels)
-                SavegameManager.Instance.ChangeActiveSlot(channel, slot);
-            screen.OnNewGame();
-            ModLog.Info($"[CoopSave] Starting the rope team's run in free slot {Letter(slot)}");
-            return true;
-        }
-        catch (Exception exception)
-        {
-            ModLog.Warning($"[CoopSave] Could not start a new game in slot {Letter(slot)}: {exception.Message}");
-            return false;
         }
     }
 
