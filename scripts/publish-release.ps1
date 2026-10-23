@@ -135,8 +135,8 @@ $body = @{
 $release = Invoke-RestMethod -Method Post -Headers $Headers -Uri "$Api/releases" -Body $body -ContentType "application/json"
 try {
     $upload = "https://uploads.github.com/repos/$Repo/releases/$($release.id)/assets"
-    Invoke-RestMethod -Method Post -Headers $Headers -Uri "$upload?name=$ZipName" -InFile $Zip -ContentType "application/zip" | Out-Null
-    Invoke-RestMethod -Method Post -Headers $Headers -Uri "$upload?name=$ZipName.sha256" -InFile $ShaFile -ContentType "text/plain" | Out-Null
+    Invoke-RestMethod -Method Post -Headers $Headers -Uri "$($upload)?name=$ZipName" -InFile $Zip -ContentType "application/zip" | Out-Null
+    Invoke-RestMethod -Method Post -Headers $Headers -Uri "$($upload)?name=$ZipName.sha256" -InFile $ShaFile -ContentType "text/plain" | Out-Null
     $release = Invoke-RestMethod -Method Patch -Headers $Headers -Uri "$Api/releases/$($release.id)" `
         -Body (@{ draft = $false } | ConvertTo-Json) -ContentType "application/json"
 } catch {
