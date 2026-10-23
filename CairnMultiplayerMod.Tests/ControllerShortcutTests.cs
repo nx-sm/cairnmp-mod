@@ -22,7 +22,7 @@ public sealed class ControllerShortcutTests
     [InlineData((int)ControllerShortcut.PickupSharedItem, (int)ControllerButton.South)]
     [InlineData((int)ControllerShortcut.GiveSelectedItem, (int)ControllerButton.West)]
     [InlineData((int)ControllerShortcut.DropSelectedItem, (int)ControllerButton.East)]
-    [InlineData((int)ControllerShortcut.PlacePing, (int)ControllerButton.RightShoulder)]
+    [InlineData((int)ControllerShortcut.ToggleTrails, (int)ControllerButton.RightShoulder)]
     [InlineData((int)ControllerShortcut.PushToTalk, (int)ControllerButton.LeftShoulder)]
     [InlineData((int)ControllerShortcut.Panic, (int)ControllerButton.RightStick)]
     [InlineData((int)ControllerShortcut.TakeUpPiton, (int)ControllerButton.DpadDown)]

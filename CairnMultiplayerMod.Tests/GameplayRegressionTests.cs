@@ -1018,7 +1018,7 @@ public sealed class GameplayRegressionTests
 
         Assert.Empty(game.WorldImpl.Marks[1]);
         Assert.Empty(game.WorldImpl.Marks[2]);
-        Assert.Equal("Marks cleared.", game.HudImpl.Messages["marks.marks"]);
+        Assert.Equal("Pings cleared.", game.HudImpl.Messages["marks.marks"]);
     }
 
     [Theory]
@@ -1303,6 +1303,20 @@ public sealed class GameplayRegressionTests
         Assert.True(game.WorldImpl.TrailsVisible);
 
         game.InputImpl.Press(GameKey.T);
+        host.Tick(FeaturePhase.Always);
+        Assert.False(game.WorldImpl.TrailsVisible);
+    }
+
+    [Fact]
+    public void ViewAndRbToggleTheTrails()
+    {
+        var (_, host, game) = Create(new ClimbTrailsFeature());
+
+        game.InputImpl.Press(GameInputAction.ToggleTrailsController);
+        host.Tick(FeaturePhase.Always);
+        Assert.True(game.WorldImpl.TrailsVisible);
+
+        game.InputImpl.Press(GameInputAction.ToggleTrailsController);
         host.Tick(FeaturePhase.Always);
         Assert.False(game.WorldImpl.TrailsVisible);
     }

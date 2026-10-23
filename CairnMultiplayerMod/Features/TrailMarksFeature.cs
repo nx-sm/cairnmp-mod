@@ -7,7 +7,8 @@ using CairnMultiplayerMod.GameApi;
 namespace CairnMultiplayerMod.Features;
 
 /// <summary>
-/// Marks left on the face.
+/// Marks left on the face — what players call pings: View + LT or B leaves one where the
+/// camera aims, in normal play, the Eagle Eye view or spectating alike.
 ///
 /// A ping is a call for attention that fades in fifteen seconds. A mark is the opposite: a
 /// climber says "this hold works" or "not that way", and it stays there for the rest of the
@@ -126,7 +127,7 @@ internal sealed class TrailMarksFeature : MultiplayerFeature
 
         if (playerId != LocalPlayerId) return;
         Game.Hud.ShowMessage("marks",
-            positions.Count == 0 ? "Marks cleared." : $"Mark left ({positions.Count}/{MaxMarksPerPlayer}).",
+            positions.Count == 0 ? "Pings cleared." : $"Ping left ({positions.Count}/{MaxMarksPerPlayer}).",
             NoticeSeconds);
     }
 

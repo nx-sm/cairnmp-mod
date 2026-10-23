@@ -34,12 +34,11 @@ internal sealed class PingFeature : MultiplayerFeature
         if (!Game.World.IsFreeCameraActive && !Game.Spectator.IsActive) return;
         if (Game.Time.UnscaledTime < _cooldownUntil) return;
 
-        var pressed = Game.Input.WasPressed(GameInputAction.PrimaryPointer)
-                      || Game.Input.WasPressed(GameInputAction.PingController);
-        if (!pressed) return;
+        // The mouse only: a controller pings with View + LT, the same in every camera
+        // (TrailMarksFeature).
+        if (!Game.Input.WasPressed(GameInputAction.PrimaryPointer)) return;
 
-        // We always aim along the camera's direction (screen centre) — consistent for
-        // mouse and pad alike.
+        // We always aim along the camera's direction (screen centre).
         if (!Game.World.TryGetAimPoint(out var point)) return;
 
         _cooldownUntil = Game.Time.UnscaledTime + Protocol.PingCooldownSeconds;

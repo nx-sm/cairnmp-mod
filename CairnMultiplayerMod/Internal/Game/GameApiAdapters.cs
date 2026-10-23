@@ -50,7 +50,7 @@ internal sealed class GameInputAdapter : IGameInputApi
         return action switch
         {
             GameInputAction.PrimaryPointer => Mouse.current?.leftButton.wasPressedThisFrame == true,
-            GameInputAction.PingController => ModControllerInput.WasPressed(ControllerShortcut.PlacePing),
+            GameInputAction.ToggleTrailsController => ModControllerInput.WasPressed(ControllerShortcut.ToggleTrails),
             GameInputAction.Panic => Keyboard.current?.f10Key.wasPressedThisFrame == true
                                      || ModControllerInput.WasPressed(ControllerShortcut.Panic),
             GameInputAction.PickupSharedItemController =>

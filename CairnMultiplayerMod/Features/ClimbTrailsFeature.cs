@@ -44,7 +44,10 @@ internal sealed class ClimbTrailsFeature : MultiplayerFeature
     {
         if (!IsConnected) return;
 
-        if (!KeyboardCaptured && Game.Input.WasKeyPressed(ToggleKey)) Toggle();
+        // T, or View + RB on a controller.
+        if ((!KeyboardCaptured && Game.Input.WasKeyPressed(ToggleKey))
+            || Game.Input.WasPressed(GameInputAction.ToggleTrailsController))
+            Toggle();
 
         // Sampling runs whether or not the trails are shown: turning them on should reveal
         // where everyone has been, not start a recording from that moment.

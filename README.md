@@ -75,9 +75,9 @@ in `UserData\MelonPreferences.cfg` to keep Cairn's own View binding.
 | `View/Share` + D-pad `←` / `→` | Select a shared ground item |
 | `View/Share` + D-pad `↑` | Show or hide player names |
 | `View/Share` + D-pad `↓` | Take out the nearest piton (Rope team) |
-| `View/Share` + `LT/L2` | Leave a trail mark where you aim (a lasting marker, 8 per climber) |
-| `View/Share` + `RT/R2` | Clear every trail mark, for everyone |
-| `View/Share` + `RB/R1` | Place a ping — a 15-second marker, from the Eagle Eye view or while spectating only |
+| `View/Share` + `LT/L2` | Ping where you aim — normal play, Eagle Eye view or spectating (8 per climber) |
+| `View/Share` + `RT/R2` | Clear every ping, for everyone |
+| `View/Share` + `RB/R1` | Show or hide the climb trails: everyone's recent route as a line |
 | Hold `View/Share` + `LB/L1` | Push to talk |
 | `View/Share` + right-stick click | Emergency input release |
 
@@ -103,12 +103,16 @@ Run `/help` for the complete command list.
 Feature-provided commands participate automatically when their usage string marks
 an argument as `<player>`.
 
-### Trail marks
+### Pings and climb trails
 
 | Key | Action |
 | --- | --- |
-| `B` or `View/Share` + `LT/L2` | Leave a mark where you aim (8 per climber; the oldest goes) |
-| `Alt` + `B` or `View/Share` + `RT/R2` | Clear every mark on the face, for everyone |
+| `B` or `View/Share` + `LT/L2` | Ping where you aim (8 per climber; the oldest goes) — works the same in normal play, the Eagle Eye view and spectating |
+| `Alt` + `B` or `View/Share` + `RT/R2` | Clear every ping on the face, for everyone |
+| `T`, `/trails` or `View/Share` + `RB/R1` | Show or hide the climb trails: a line along each climber's recent route |
+
+Pings stay for the session and reach players who join later. The climb trails are
+recorded all along, hidden or not, so showing them reveals where everyone has been.
 
 ### Climb as a rope team
 

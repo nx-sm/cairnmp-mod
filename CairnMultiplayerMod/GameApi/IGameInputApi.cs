@@ -3,7 +3,7 @@ namespace CairnMultiplayerMod.GameApi;
 internal enum GameInputAction
 {
     PrimaryPointer,
-    PingController,
+    ToggleTrailsController,
     Panic,
     PickupSharedItemController,
     PlaceMarkController,
