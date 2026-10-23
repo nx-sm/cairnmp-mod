@@ -170,6 +170,10 @@ public partial class Mod
         ModControllerInput.Update();
         InputCaptureState.IsControllerShortcutCaptured = ModControllerInput.IsModifierHeld
             && (_multiplayerModeActive || SceneRoles.IsMainMenu(CurrentScene));
+        // Before the reconcile: on release the actions come back first, then the game's
+        // input context is rebuilt over them.
+        ShortcutButtonBlock.Apply(InputCaptureState.IsControllerShortcutCaptured
+                                  && !InputCaptureState.IsKeyboardCaptured);
         InputInterop.ReconcileGameplayInput(InputCaptureState.WantsGameplayBlocked,
             InputCaptureState.WantsInputEventsIgnored);
 
@@ -189,6 +193,7 @@ public partial class Mod
         panicPressed |= ModControllerInput.WasPressed(ControllerShortcut.Panic);
         if (panicPressed)
         {
+            ShortcutButtonBlock.Apply(false);
             InputInterop.ForceClearBlock();
             LoggerInstance.Msg("[CairnMP] Panic: input force-cleared");
         }

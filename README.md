@@ -54,7 +54,10 @@ base URL for local testing with `CAIRNMP_API_URL`.
 
 CairnMP uses **View/Share/Create** as a modifier so its commands do not replace
 Cairn's normal controller layout. Hold the modifier first, then press the action
-button; Cairn's native actions are temporarily blocked while it is held.
+button. While it is held, Cairn's own actions on those buttons are switched off —
+View + `Y` ties the rope without also whistling for the Climbot — and the sticks keep
+working, so the climber does not let go. An action already held when View goes down
+(hang mode on `RT`, say) carries on.
 
 The button belongs to CairnMP alone: whatever Cairn itself does with View moves to
 the **Menu** button (☰) while the mod runs. On an Xbox Series controller, View is
@@ -72,9 +75,9 @@ in `UserData\MelonPreferences.cfg` to keep Cairn's own View binding.
 | `View/Share` + D-pad `←` / `→` | Select a shared ground item |
 | `View/Share` + D-pad `↑` | Show or hide player names |
 | `View/Share` + D-pad `↓` | Take out the nearest piton (Rope team) |
-| `View/Share` + `LT/L2` | Leave a trail mark where you aim |
-| `View/Share` + `RT/R2` | Clear every trail mark |
-| `View/Share` + `RB/R1` | Place a multiplayer ping |
+| `View/Share` + `LT/L2` | Leave a trail mark where you aim (a lasting marker, 8 per climber) |
+| `View/Share` + `RT/R2` | Clear every trail mark, for everyone |
+| `View/Share` + `RB/R1` | Place a ping — a 15-second marker, from the Eagle Eye view or while spectating only |
 | Hold `View/Share` + `LB/L1` | Push to talk |
 | `View/Share` + right-stick click | Emergency input release |
 
