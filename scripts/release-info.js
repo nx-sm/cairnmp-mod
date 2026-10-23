@@ -49,7 +49,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       changelog: readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8'),
     });
     writeFileSync(notesPath, info.notes);
-    // GITHUB_OUTPUT format, one key per line.
+    // key=value, one per line, read by scripts/publish-release.ps1.
     console.log(`version=${info.version}\nprerelease=${info.prerelease}\ntitle=${info.title}`);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

@@ -467,43 +467,34 @@ build.
 
 ## Publish a release
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`. It builds, tests and
-packages the mod, then publishes the GitHub release the launcher installs from:
-players are offered it as soon as it appears, with no other step.
+Releases are published from the machine that has the game installed, with
+`scripts/publish-release.ps1`. The build compiles against the local `game-refs/`, so
+the game's files never leave it. The GitHub release it creates is what the launcher
+installs from: players are offered it as soon as it appears, with no other step.
 
 1. Bump `mod` in `versions.json` and run `node scripts/sync-versions.js`.
 2. In `CHANGELOG.md`, rename `## [Unreleased]` to
    `## [x.y.z] — YYYY-MM-DD (beta)` or `(stable)`.
-3. Commit, then `git tag vx.y.z` and `git push origin vx.y.z`.
+3. Commit, then run `./scripts/publish-release.ps1`.
+
+The script checks that `versions.json` and the changelog agree, builds, tests and
+packages the mod, tags `HEAD` as `vx.y.z`, pushes the branch and the tag, then
+creates the GitHub release as a draft, uploads the archive and its `.sha256`, and
+publishes it — the launcher never sees a release without its archive. It then
+downloads the archive back and checks it matches. It refuses uncommitted changes and
+a version that is already published.
 
 A `(beta)` heading publishes a pre-release, which only the launcher's beta channel
 installs; untick **pre-release** on GitHub to promote it to stable. The release
-notes are that changelog section. A tag that disagrees with `versions.json`, or a
-version without a changelog section, fails before anything is built. A suffixed
-tag (`vx.y.z-r2`) republishes the same version.
-
-### One-time setup
-
-The build needs the game's generated assemblies, which must never be published:
-
-1. Create the **private** repository `CairnMP/cairnmp-game-refs`.
-2. Fill it from a Cairn install where MelonLoader has run once, then commit and
-   push. Repeat after a game update.
-
-   ```powershell
-   ./scripts/export-game-refs.ps1 -GameDirectory "<Cairn folder>" -Destination ..\cairnmp-game-refs
-   ```
-
-3. Run `ssh-keygen -t ed25519 -N "" -f game-refs-key`. Add `game-refs-key.pub` as
-   a read-only deploy key of `cairnmp-game-refs`, and the content of `game-refs-key`
-   as the `GAME_REFS_DEPLOY_KEY` Actions secret of this repository.
+notes are that changelog section. `-DryRun` stops after packaging (into a temporary
+folder); `-Tag vx.y.z-r2` republishes the same version. The GitHub token comes from
+`GH_TOKEN`/`GITHUB_TOKEN`, or from the login git already uses for github.com.
 
 The loader references come from the MelonLoader archive the launcher installs.
 Until LavaGang releases the fix for non-ASCII game paths
 ([LavaGang/MelonLoader#1226](https://github.com/LavaGang/MelonLoader/pull/1226)), that is the
 [patched fork](https://github.com/yutho-o/MelonLoader/tree/cairnmp)'s
-`v0.7.2-cairnmp.N` build; afterwards, the official `MelonLoader.x64.zip`. Its URL
-and SHA-256 are pinned in the workflow and in the launcher: change both together.
+`v0.7.2-cairnmp.N` build; afterwards, the official `MelonLoader.x64.zip`.
 
 ## Versioning
 
